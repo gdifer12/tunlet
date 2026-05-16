@@ -6,6 +6,8 @@
 #include <QFileInfo>
 #include <QSaveFile>
 
+#include <yaml-cpp/yaml.h>
+
 namespace tunlet::config {
 
 ConfigFileService::ConfigFileService(EditingConfig editingConfig)
@@ -27,6 +29,13 @@ ConfigFileValidationResult ConfigFileService::validateConfigText(const QString &
     try {
         ConfigLoader::loadFromData(text, path);
         return {.ok = true};
+    } catch (const YAML::Exception &ex) {
+        return {
+            .ok = false,
+            .error = QString::fromStdString(ex.msg),
+            .errorLine = ex.mark.line >= 0 ? ex.mark.line + 1 : -1,
+            .errorColumn = ex.mark.column >= 0 ? ex.mark.column + 1 : -1,
+        };
     } catch (const std::exception &ex) {
         return {.ok = false, .error = ex.what()};
     }

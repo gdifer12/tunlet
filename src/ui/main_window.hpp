@@ -82,6 +82,9 @@ private:
     void updateModeSelectionUi();
     void updateWindowSizeLabel();
     void updateRuleLineNumbers();
+    void updateRuleEditorErrorHighlight();
+    void updateSettingsEditorErrorHighlight();
+    void applyEditorErrorHighlight(QPlainTextEdit *editor, int line, int column);
     void refreshRecentActionLabel();
     void closeSelectorPopup();
     void openModePopup();

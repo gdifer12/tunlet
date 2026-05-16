@@ -37,3 +37,13 @@ TEST_CASE("RuleSetService rejects invalid JSON", "[rules]") {
     REQUIRE_FALSE(result.ok);
     REQUIRE(result.error.contains("invalid JSON"));
 }
+
+TEST_CASE("RuleSetService reports JSON error coordinates", "[rules]") {
+    tunlet::rules::RuleSetService service({});
+    const auto result = service.validateJson("{\n  \"a\":\n}");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(result.error.contains("invalid JSON"));
+    REQUIRE(result.errorLine == 3);
+    REQUIRE(result.errorColumn >= 1);
+    REQUIRE(result.errorOffset >= 0);
+}

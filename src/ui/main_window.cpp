@@ -1,7 +1,9 @@
 #include "ui/main_window.hpp"
+#include "ui/editor_highlighting.hpp"
 
 #include <QAbstractButton>
 #include <QCoreApplication>
+#include <QColor>
 #include <QDateTime>
 #include <QDir>
 #include <QEvent>
@@ -29,6 +31,10 @@
 #include <QToolButton>
 #include <QTimer>
 #include <QTextDocument>
+#include <QTextBlock>
+#include <QTextCursor>
+#include <QTextEdit>
+#include <QTextFormat>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 #include <QWidget>
@@ -117,6 +123,44 @@ QString compactProbeCommands(const config::AppConfig &config) {
         .arg(commandName(config.diagnostics.connection.ipv4),
              commandName(config.diagnostics.connection.timing),
              commandName(config.diagnostics.connection.dns));
+}
+
+QList<QTextEdit::ExtraSelection> buildEditorErrorSelections(QPlainTextEdit *editor, int line, int column) {
+    QList<QTextEdit::ExtraSelection> selections;
+    if (!editor || line <= 0) {
+        return selections;
+    }
+
+    QTextBlock block = editor->document()->findBlockByNumber(line - 1);
+    if (!block.isValid()) {
+        return selections;
+    }
+
+    QTextEdit::ExtraSelection lineSelection;
+    lineSelection.format.setBackground(QColor(220, 38, 38, 52));
+    lineSelection.format.setProperty(QTextFormat::FullWidthSelection, true);
+    lineSelection.cursor = QTextCursor(block);
+    lineSelection.cursor.clearSelection();
+    selections.push_back(lineSelection);
+
+    if (column > 0) {
+        const int blockLength = qMax(0, block.length() - 1);
+        const int columnIndex = qBound(0, column - 1, blockLength);
+        QTextCursor caretCursor(block);
+        caretCursor.setPosition(block.position() + columnIndex);
+        if (columnIndex < blockLength) {
+            caretCursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+        }
+
+        QTextEdit::ExtraSelection caretSelection;
+        caretSelection.cursor = caretCursor;
+        caretSelection.format.setBackground(QColor(220, 38, 38, 96));
+        caretSelection.format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
+        caretSelection.format.setUnderlineColor(QColor("#f87171"));
+        selections.push_back(caretSelection);
+    }
+
+    return selections;
 }
 
 QWidget *buildMetricItem(QWidget *parent, const QString &labelText, QLabel **valueLabel) {
@@ -899,6 +943,7 @@ QWidget *MainWindow::buildRuleSetsPage() {
     m_editor = new QPlainTextEdit(editorFrame);
     m_editor->setObjectName("ruleEditor");
     m_editor->setLineWrapMode(QPlainTextEdit::NoWrap);
+    new JsonSyntaxHighlighter(m_editor->document());
     connect(m_editor, &QPlainTextEdit::textChanged, this, &MainWindow::onRuleEditorTextChanged);
     connect(m_editor->verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
         closeSelectorPopup();
@@ -1046,6 +1091,7 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     m_settingsEditor->setObjectName("settingsEditor");
     m_settingsEditor->setLineWrapMode(QPlainTextEdit::NoWrap);
     m_settingsEditor->setMinimumHeight(420);
+    new YamlSyntaxHighlighter(m_settingsEditor->document());
     m_settingsEditor->viewport()->installEventFilter(this);
     connect(m_settingsEditor, &QPlainTextEdit::textChanged, this, &MainWindow::onSettingsEditorTextChanged);
     connect(m_settingsEditor->verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
@@ -1156,6 +1202,7 @@ void MainWindow::populateRuleFiles() {
         }
         m_loadedRuleText.clear();
         updateRuleLineNumbers();
+        applyEditorErrorHighlight(m_editor, -1, -1);
         setRuleBanner("No files configured", "Add rule-set paths in config.yaml to edit them here.", "warn");
     }
 }
@@ -1245,6 +1292,41 @@ void MainWindow::updateRuleLineNumbers() {
         lines.push_back(QString::number(line));
     }
     m_ruleLineNumbersLabel->setText(lines.join('\n'));
+}
+
+void MainWindow::applyEditorErrorHighlight(QPlainTextEdit *editor, int line, int column) {
+    if (!editor) {
+        return;
+    }
+    editor->setExtraSelections(buildEditorErrorSelections(editor, line, column));
+}
+
+void MainWindow::updateRuleEditorErrorHighlight() {
+    if (!m_editor || !m_ruleSetService) {
+        return;
+    }
+
+    const auto result = m_ruleSetService->validateJson(m_editor->toPlainText());
+    if (!result.ok) {
+        applyEditorErrorHighlight(m_editor, result.errorLine, result.errorColumn);
+        return;
+    }
+
+    applyEditorErrorHighlight(m_editor, -1, -1);
+}
+
+void MainWindow::updateSettingsEditorErrorHighlight() {
+    if (!m_settingsEditor || !m_configFileService) {
+        return;
+    }
+
+    const auto result = m_configFileService->validateConfigText(m_config.configPath, m_settingsEditor->toPlainText());
+    if (!result.ok) {
+        applyEditorErrorHighlight(m_settingsEditor, result.errorLine, result.errorColumn);
+        return;
+    }
+
+    applyEditorErrorHighlight(m_settingsEditor, -1, -1);
 }
 
 void MainWindow::refreshRecentActionLabel() {
@@ -1771,6 +1853,7 @@ void MainWindow::onRuleFileSelectionChanged() {
         }
         m_loadedRuleText.clear();
         updateRuleLineNumbers();
+        applyEditorErrorHighlight(m_editor, -1, -1);
         setRuleBanner("Load failed", result.error, "danger");
         showActionMessage(result.error, 5000);
         return;
@@ -1782,6 +1865,7 @@ void MainWindow::onRuleFileSelectionChanged() {
         m_editor->setPlainText(result.text);
     }
     updateRuleLineNumbers();
+    updateRuleEditorErrorHighlight();
     if (m_ruleEditorTitleLabel) {
         m_ruleEditorTitleLabel->setText(file->name);
     }
@@ -1797,6 +1881,8 @@ void MainWindow::onRuleEditorTextChanged() {
     if (!m_editor) {
         return;
     }
+
+    updateRuleEditorErrorHighlight();
 
     const bool dirty = m_editor->toPlainText() != m_loadedRuleText;
     if (dirty) {
@@ -1824,6 +1910,7 @@ void MainWindow::validateCurrentEditorText() {
         m_editor->setPlainText(result.formattedText);
     }
     updateRuleLineNumbers();
+    applyEditorErrorHighlight(m_editor, -1, -1);
     const bool dirty = result.formattedText != m_loadedRuleText;
     setRuleBanner("Valid JSON", dirty ? "JSON is valid. Save to write the formatted version." : "JSON is valid and matches disk.", "ok");
     showActionMessage("JSON validated", 3000);
@@ -1858,6 +1945,7 @@ void MainWindow::saveCurrentRuleFile() {
         m_editor->setPlainText(validation.formattedText);
     }
     updateRuleLineNumbers();
+    applyEditorErrorHighlight(m_editor, -1, -1);
     setRuleBanner("Saved", QString("Wrote %1").arg(compactPath(file->path)), "ok");
     showActionMessage("Rule-set saved", 3000);
     updateRuleFileTrigger();
@@ -1880,6 +1968,8 @@ void MainWindow::onSettingsEditorTextChanged() {
         return;
     }
 
+    updateSettingsEditorErrorHighlight();
+
     const bool dirty = m_settingsEditor->toPlainText() != m_loadedSettingsText;
     if (dirty) {
         setSettingsBanner("Unsaved configuration changes. Validate before applying.", "warn");
@@ -1901,6 +1991,7 @@ void MainWindow::validateSettingsText() {
     }
 
     setSettingsBanner("Config is valid and ready to apply.", "ok");
+    applyEditorErrorHighlight(m_settingsEditor, -1, -1);
     showActionMessage("Config validated", 3000);
 }
 
@@ -1937,6 +2028,7 @@ void MainWindow::saveSettingsFile() {
 
     m_loadedSettingsText = text;
     setSettingsBanner("Config saved and applied.", "ok");
+    applyEditorErrorHighlight(m_settingsEditor, -1, -1);
     showActionMessage("Config saved", 3000);
 }
 
@@ -1950,6 +2042,7 @@ void MainWindow::reloadSettingsFile() {
         QSignalBlocker blocker(m_settingsEditor);
         m_settingsEditor->clear();
         m_loadedSettingsText.clear();
+        applyEditorErrorHighlight(m_settingsEditor, -1, -1);
         setSettingsBanner(result.error, "danger");
         showActionMessage(result.error, 5000);
         return;
@@ -1960,6 +2053,7 @@ void MainWindow::reloadSettingsFile() {
         m_settingsEditor->setPlainText(result.text);
     }
     m_loadedSettingsText = result.text;
+    updateSettingsEditorErrorHighlight();
 
     try {
         applyConfig(config::ConfigLoader::loadFromData(result.text, m_config.configPath));

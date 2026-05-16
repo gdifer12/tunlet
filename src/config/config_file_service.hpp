@@ -15,6 +15,8 @@ struct ConfigFileLoadResult {
 struct ConfigFileValidationResult {
     bool ok = false;
     QString error;
+    int errorLine = -1;
+    int errorColumn = -1;
 };
 
 struct ConfigFileSaveResult {

@@ -17,6 +17,9 @@ struct ValidationResult {
     bool ok = false;
     QString formattedText;
     QString error;
+    int errorOffset = -1;
+    int errorLine = -1;
+    int errorColumn = -1;
 };
 
 struct SaveResult {

@@ -31,6 +31,7 @@ set(TUNLET_SOURCES
     src/rules/ruleset_service.cpp
     src/diagnostics/diagnostics_service.cpp
     src/theme/theme_loader.cpp
+    src/ui/editor_highlighting.cpp
     src/ui/main_window.cpp
     src/ui/tray_controller.cpp
     resources/resources.qrc
@@ -67,6 +68,7 @@ if(BUILD_TESTING)
     find_package(Catch2 3 REQUIRED)
     add_executable(tunlet_tests
         tests/clash_api_client_tests.cpp
+        tests/config_file_service_tests.cpp
         tests/config_loader_tests.cpp
         tests/diagnostics_parsing_tests.cpp
         tests/logical_mode_tests.cpp
