@@ -83,14 +83,17 @@ ClashModeProfile parseModeProfile(const YAML::Node &node, const QString &context
     return profile;
 }
 
-RuleSetFileConfig parseRuleSetFile(const YAML::Node &node, const QString &context) {
+RuleSetFileConfig parseRuleSetFile(const YAML::Node &node,
+                                   const QString &context,
+                                   const QString &configRoute,
+                                   const QString &fallbackBasePath) {
     if (!node || !node.IsMap()) {
         throw std::runtime_error(QString("%1: expected a map").arg(context).toStdString());
     }
 
     RuleSetFileConfig file;
     file.name = requireString(node, "name", context);
-    file.path = tunlet::app::expandUserPath(requireString(node, "path", context));
+    file.path = tunlet::app::resolveConfiguredPath(requireString(node, "path", context), configRoute, fallbackBasePath);
     file.description = node["description"] ? QString::fromStdString(node["description"].as<std::string>()) : QString{};
     return file;
 }
@@ -140,18 +143,41 @@ config::DiagnosticsCommandConfig defaultDnsCommand() {
     };
 }
 
-QString defaultGeoDbPath(const QString &sourcePath) {
-    QString configPath = sourcePath;
-    if (configPath.trimmed().isEmpty()) {
+QString defaultGeoDbPath(const QString &configRoute, const QString &fallbackBasePath) {
+    return tunlet::app::resolveConfiguredPath("GeoLite2-City.mmdb", configRoute, fallbackBasePath);
+}
+
+QString formatConfigRoute(const QString &sourcePath) {
+    QString configPath = sourcePath.trimmed();
+    if (configPath.isEmpty()) {
         configPath = tunlet::app::defaultConfigPath();
     }
 
     const QFileInfo configInfo(tunlet::app::expandUserPath(configPath));
     const QString configDir = configInfo.dir().absolutePath();
     if (configDir.isEmpty()) {
-        return QDir::homePath() + "/.config/tunlet/GeoLite2-City.mmdb";
+        return QDir::homePath() + "/.config/tunlet";
     }
-    return QDir(configDir).filePath("GeoLite2-City.mmdb");
+    return configDir;
+}
+
+QString parseConfigRoute(const YAML::Node &root, const QString &sourcePath) {
+    const QString fallbackBasePath = formatConfigRoute(sourcePath);
+    if (!root["configRoute"]) {
+        return fallbackBasePath;
+    }
+
+    const YAML::Node value = root["configRoute"];
+    if (!value.IsScalar()) {
+        throw std::runtime_error("configRoute must be a string");
+    }
+
+    const QString configuredRoute = QString::fromStdString(value.as<std::string>());
+    const QString resolvedRoute = tunlet::app::resolveConfiguredPath(configuredRoute, QString(), fallbackBasePath);
+    if (resolvedRoute.trimmed().isEmpty()) {
+        throw std::runtime_error("configRoute must not be empty");
+    }
+    return resolvedRoute;
 }
 
 config::DiagnosticsCommandConfig parseDiagnosticsCommand(const YAML::Node &node,
@@ -186,11 +212,12 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
 
     AppConfig config;
     config.configPath = sourcePath;
+    config.configRoute = parseConfigRoute(root, sourcePath);
     config.diagnostics.connection.ipv4 = defaultIpv4Command();
     config.diagnostics.connection.timing = defaultTimingCommand();
     config.diagnostics.connection.dns = defaultDnsCommand();
     config.diagnostics.connection.location.enabled = true;
-    config.diagnostics.connection.location.databasePath = defaultGeoDbPath(sourcePath);
+    config.diagnostics.connection.location.databasePath = defaultGeoDbPath(config.configRoute, formatConfigRoute(sourcePath));
 
     const YAML::Node clashApi = root["clashApi"];
     if (!clashApi || !clashApi.IsMap()) {
@@ -218,10 +245,15 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
         throw std::runtime_error("missing ruleSets section");
     }
 
-    config.ruleSets.forceProxyPath = tunlet::app::expandUserPath(requireString(ruleSets, "forceProxyPath", "ruleSets"));
-    config.ruleSets.forceDirectPath = tunlet::app::expandUserPath(requireString(ruleSets, "forceDirectPath", "ruleSets"));
-    config.ruleSets.autoProxyPath = tunlet::app::expandUserPath(requireString(ruleSets, "autoProxyPath", "ruleSets"));
-    config.ruleSets.autoDirectPath = tunlet::app::expandUserPath(requireString(ruleSets, "autoDirectPath", "ruleSets"));
+    const QString fallbackBasePath = formatConfigRoute(sourcePath);
+    config.ruleSets.forceProxyPath =
+        tunlet::app::resolveConfiguredPath(requireString(ruleSets, "forceProxyPath", "ruleSets"), config.configRoute, fallbackBasePath);
+    config.ruleSets.forceDirectPath =
+        tunlet::app::resolveConfiguredPath(requireString(ruleSets, "forceDirectPath", "ruleSets"), config.configRoute, fallbackBasePath);
+    config.ruleSets.autoProxyPath =
+        tunlet::app::resolveConfiguredPath(requireString(ruleSets, "autoProxyPath", "ruleSets"), config.configRoute, fallbackBasePath);
+    config.ruleSets.autoDirectPath =
+        tunlet::app::resolveConfiguredPath(requireString(ruleSets, "autoDirectPath", "ruleSets"), config.configRoute, fallbackBasePath);
     validateNonEmptyPath(config.ruleSets.forceProxyPath, "forceProxyPath");
     validateNonEmptyPath(config.ruleSets.forceDirectPath, "forceDirectPath");
     validateNonEmptyPath(config.ruleSets.autoProxyPath, "autoProxyPath");
@@ -234,14 +266,15 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
 
         int index = 0;
         for (const auto &item : extraFiles) {
-            config.ruleSets.extraFiles.push_back(parseRuleSetFile(item, QString("ruleSets.extraFiles[%1]").arg(index)));
+            config.ruleSets.extraFiles.push_back(
+                parseRuleSetFile(item, QString("ruleSets.extraFiles[%1]").arg(index), config.configRoute, fallbackBasePath));
             ++index;
         }
     }
 
     if (const YAML::Node diagnostics = root["diagnostics"]) {
         config.diagnostics.enabled = readBool(diagnostics, "enabled", true);
-        config.diagnostics.refreshIntervalMs = readInt(diagnostics, "refreshIntervalMs", 10000);
+        config.diagnostics.refreshIntervalMs = readInt(diagnostics, "refreshIntervalMs", 180000);
         config.diagnostics.requestTimeoutMs = readInt(diagnostics, "requestTimeoutMs", 5000);
         if (config.diagnostics.refreshIntervalMs <= 0) {
             throw std::runtime_error("diagnostics.refreshIntervalMs must be > 0");
@@ -279,14 +312,22 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
                 config.diagnostics.connection.location.enabled = readBool(location, "enabled", true);
                 if (location["databasePath"]) {
                     config.diagnostics.connection.location.databasePath =
-                        tunlet::app::expandUserPath(QString::fromStdString(location["databasePath"].as<std::string>()));
+                        tunlet::app::resolveConfiguredPath(
+                            QString::fromStdString(location["databasePath"].as<std::string>()),
+                            config.configRoute,
+                            fallbackBasePath);
                 }
             }
         }
     }
 
     if (const YAML::Node theme = root["theme"]) {
-        config.theme.qssPath = theme["qssPath"] ? tunlet::app::expandUserPath(QString::fromStdString(theme["qssPath"].as<std::string>())) : QString{};
+        config.theme.qssPath =
+            theme["qssPath"]
+                ? tunlet::app::resolveConfiguredPath(QString::fromStdString(theme["qssPath"].as<std::string>()),
+                                                     config.configRoute,
+                                                     fallbackBasePath)
+                : QString{};
     }
 
     if (const YAML::Node editing = root["editing"]) {

@@ -84,6 +84,16 @@ QString lastRefreshLabel(const QDateTime &time) {
     return time.isValid() ? time.toString("HH:mm:ss") : QString("Waiting");
 }
 
+QString formatRefreshInterval(int refreshIntervalMs) {
+    if (refreshIntervalMs > 0 && refreshIntervalMs % 60000 == 0) {
+        return QString("%1 min").arg(refreshIntervalMs / 60000);
+    }
+    if (refreshIntervalMs > 0 && refreshIntervalMs % 1000 == 0) {
+        return QString("%1 s").arg(refreshIntervalMs / 1000);
+    }
+    return QString("%1 ms").arg(refreshIntervalMs);
+}
+
 QString formatDelayValue(qint64 valueMs) {
     return valueMs >= 0 ? QString("%1 ms").arg(valueMs) : QString("Unavailable");
 }
@@ -468,6 +478,21 @@ QWidget *MainWindow::buildHealthStrip() {
     auto *gridHost = new QWidget(strip);
     gridHost->setLayout(grid);
     layout->addWidget(gridHost, 1);
+
+    auto *recheckButton = new QToolButton(strip);
+    recheckButton->setObjectName("ghostButton");
+    recheckButton->setCursor(Qt::PointingHandCursor);
+    recheckButton->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
+    recheckButton->setIconSize(QSize(16, 16));
+    recheckButton->setToolTip("Recheck diagnostics");
+    recheckButton->setAutoRaise(false);
+    recheckButton->setFixedSize(QSize(34, 34));
+    connect(recheckButton, &QToolButton::clicked, this, [this]() {
+        m_modeController->refreshStatus();
+        m_diagnosticsService->refreshNow();
+        showActionMessage("Requested diagnostics recheck", 3000);
+    });
+    layout->addWidget(recheckButton, 0, Qt::AlignVCenter);
     return strip;
 }
 
@@ -1564,8 +1589,8 @@ void MainWindow::updateDashboardCards() {
         m_lastDiagnostics.trafficAvailable ? QString("%1\n%2").arg(m_lastDiagnostics.trafficSummary, m_lastDiagnostics.trafficDetail)
                                            : m_lastDiagnostics.trafficDetail;
     const QString diagnosticsText = m_config.diagnostics.enabled
-                                        ? QString("Every %1 s · timeout %2 ms")
-                                              .arg(m_config.diagnostics.refreshIntervalMs / 1000.0, 0, 'f', 0)
+                                        ? QString("Every %1 · timeout %2 ms")
+                                              .arg(formatRefreshInterval(m_config.diagnostics.refreshIntervalMs))
                                               .arg(m_config.diagnostics.requestTimeoutMs)
                                         : QString("Disabled");
     const QString dnsText = m_lastDiagnostics.dnsSummary;

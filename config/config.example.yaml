@@ -1,3 +1,5 @@
+configRoute: "~/.config"
+
 clashApi:
   host: "127.0.0.1"
   port: 21090
@@ -7,18 +9,18 @@ clashApi:
       desc: "Optional extra Clash mode profile"
 
 ruleSets:
-  forceProxyPath: "/home/user/.config/sing-box/rules/force-proxy.json"
-  forceDirectPath: "/home/user/.config/sing-box/rules/force-direct.json"
-  autoProxyPath: "/home/user/.config/sing-box/rules/auto-proxy.json"
-  autoDirectPath: "/home/user/.config/sing-box/rules/auto-direct.json"
+  forceProxyPath: "sing-box/rules/force-proxy.json"
+  forceDirectPath: "sing-box/rules/force-direct.json"
+  autoProxyPath: "sing-box/rules/auto-proxy.json"
+  autoDirectPath: "sing-box/rules/auto-direct.json"
   extraFiles:
     - name: "custom-bypass"
-      path: "/home/user/.config/sing-box/rules/custom-bypass.json"
+      path: "sing-box/rules/custom-bypass.json"
       description: "Optional extra editable rule-set"
 
 diagnostics:
   enabled: true
-  refreshIntervalMs: 10000
+  refreshIntervalMs: 180000
   requestTimeoutMs: 5000
   connection:
     ipv4:
@@ -41,7 +43,7 @@ diagnostics:
       args: ["-4", "+short", "TXT", "o-o.myaddr.l.google.com"]
     location:
       enabled: true
-      databasePath: "~/.config/tunlet/GeoLite2-City.mmdb"
+      databasePath: "tunlet/GeoLite2-City.mmdb"
 
 theme:
   qssPath: ""

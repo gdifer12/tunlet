@@ -45,6 +45,16 @@ QString commandName(const config::DiagnosticsCommandConfig &command) {
     return info.fileName().isEmpty() ? command.executable : info.fileName();
 }
 
+QString formatRefreshInterval(int refreshIntervalMs) {
+    if (refreshIntervalMs > 0 && refreshIntervalMs % 60000 == 0) {
+        return QString("%1 min").arg(refreshIntervalMs / 60000);
+    }
+    if (refreshIntervalMs > 0 && refreshIntervalMs % 1000 == 0) {
+        return QString("%1 s").arg(refreshIntervalMs / 1000);
+    }
+    return QString("%1 ms").arg(refreshIntervalMs);
+}
+
 QString timingBreakdown(const DiagnosticsSnapshot &snapshot) {
     QStringList parts;
     if (snapshot.delayDnsMs >= 0) {
@@ -233,9 +243,9 @@ void DiagnosticsService::updateConfigurationSnapshot() {
                  commandName(diagnostics.connection.timing),
                  commandName(diagnostics.connection.dns));
     m_snapshot.configurationDetail =
-        QString("Geo DB: %1 · refresh %2 s · timeout %3 ms")
+        QString("Geo DB: %1 · refresh %2 · timeout %3 ms")
             .arg(diagnostics.connection.location.databasePath,
-                 QString::number(diagnostics.refreshIntervalMs / 1000.0, 'f', 0),
+                 formatRefreshInterval(diagnostics.refreshIntervalMs),
                  QString::number(diagnostics.requestTimeoutMs));
 }
 

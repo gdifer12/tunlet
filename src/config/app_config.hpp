@@ -51,7 +51,7 @@ struct DiagnosticsConnectionConfig {
 
 struct DiagnosticsConfig {
     bool enabled = true;
-    int refreshIntervalMs = 10000;
+    int refreshIntervalMs = 180000;
     int requestTimeoutMs = 5000;
     DiagnosticsConnectionConfig connection;
 };
@@ -66,6 +66,7 @@ struct EditingConfig {
 };
 
 struct AppConfig {
+    QString configRoute;
     ClashApiConfig clashApi;
     RuleSetPathsConfig ruleSets;
     DiagnosticsConfig diagnostics;

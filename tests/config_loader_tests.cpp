@@ -15,6 +15,7 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Text));
     QTextStream stream(&file);
     stream
+        << "configRoute: /tmp/tunlet-root\n"
         << "clashApi:\n"
         << "  host: 127.0.0.1\n"
         << "  port: 9090\n"
@@ -23,10 +24,10 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "      mode: gaming\n"
         << "      desc: Gaming profile\n"
         << "ruleSets:\n"
-        << "  forceProxyPath: /tmp/force-proxy.json\n"
-        << "  forceDirectPath: /tmp/force-direct.json\n"
-        << "  autoProxyPath: /tmp/auto-proxy.json\n"
-        << "  autoDirectPath: /tmp/auto-direct.json\n"
+        << "  forceProxyPath: sing-box/force-proxy.json\n"
+        << "  forceDirectPath: sing-box/force-direct.json\n"
+        << "  autoProxyPath: sing-box/auto-proxy.json\n"
+        << "  autoDirectPath: sing-box/auto-direct.json\n"
         << "diagnostics:\n"
         << "  enabled: true\n"
         << "  refreshIntervalMs: 1234\n"
@@ -43,7 +44,7 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "      args: [-4, +short, TXT, o-o.myaddr.l.google.com]\n"
         << "    location:\n"
         << "      enabled: true\n"
-        << "      databasePath: ~/geo/GeoLite2-City.mmdb\n"
+        << "      databasePath: geo/GeoLite2-City.mmdb\n"
         << "editing:\n"
         << "  createBackup: false\n";
     file.close();
@@ -61,11 +62,13 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     REQUIRE(config.clashApi.profiles.at(3).name == "gaming");
     REQUIRE(config.clashApi.profiles.at(3).mode == "gaming");
     REQUIRE(config.clashApi.profiles.at(3).desc == "Gaming profile");
+    REQUIRE(config.configRoute == "/tmp/tunlet-root");
+    REQUIRE(config.ruleSets.forceProxyPath == "/tmp/tunlet-root/sing-box/force-proxy.json");
     REQUIRE(config.diagnostics.refreshIntervalMs == 1234);
     REQUIRE(config.diagnostics.connection.ipv4.executable == "curl");
     REQUIRE(config.diagnostics.connection.dns.executable == "dig");
     REQUIRE(config.diagnostics.connection.location.enabled == true);
-    REQUIRE(config.diagnostics.connection.location.databasePath.endsWith("/geo/GeoLite2-City.mmdb"));
+    REQUIRE(config.diagnostics.connection.location.databasePath == "/tmp/tunlet-root/geo/GeoLite2-City.mmdb");
     REQUIRE(config.editing.createBackup == false);
 }
 
@@ -82,10 +85,10 @@ TEST_CASE("ConfigLoader derives default GeoLite path from config directory", "[c
         << "  host: 127.0.0.1\n"
         << "  port: 9090\n"
         << "ruleSets:\n"
-        << "  forceProxyPath: /tmp/force-proxy.json\n"
-        << "  forceDirectPath: /tmp/force-direct.json\n"
-        << "  autoProxyPath: /tmp/auto-proxy.json\n"
-        << "  autoDirectPath: /tmp/auto-direct.json\n"
+        << "  forceProxyPath: force-proxy.json\n"
+        << "  forceDirectPath: force-direct.json\n"
+        << "  autoProxyPath: auto-proxy.json\n"
+        << "  autoDirectPath: auto-direct.json\n"
         << "diagnostics:\n"
         << "  connection:\n"
         << "    ipv4:\n"
@@ -93,6 +96,8 @@ TEST_CASE("ConfigLoader derives default GeoLite path from config directory", "[c
     file.close();
 
     const auto config = tunlet::config::ConfigLoader::loadFromPath(configPath);
+    REQUIRE(config.configRoute == dir.path());
+    REQUIRE(config.ruleSets.forceProxyPath == dir.path() + "/force-proxy.json");
     REQUIRE(config.diagnostics.connection.location.databasePath == dir.path() + "/GeoLite2-City.mmdb");
 }
 

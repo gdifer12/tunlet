@@ -60,11 +60,14 @@ An example configuration is provided at [config/config.example.yaml](/work/tunle
 
 Top-level keys:
 
+- `configRoute`
 - `clashApi`
 - `ruleSets`
 - `diagnostics`
 - `theme`
 - `editing`
+
+`configRoute` is the base directory used to resolve relative file paths in the config, for example `~/.config`.
 
 `diagnostics.connection` configures the three external probes and the local GeoLite2 database:
 
