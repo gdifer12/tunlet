@@ -187,8 +187,8 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
 
 void MainWindow::buildUi(bool trayAvailable) {
     setWindowTitle("tunlet");
-    resize(1040, 760);
-    setMinimumSize(920, 640);
+    resize(760, 760);
+    setMinimumSize(680, 620);
 
     auto *root = new QWidget(this);
     root->setObjectName("appRoot");
@@ -205,16 +205,16 @@ void MainWindow::buildUi(bool trayAvailable) {
 
     auto *windowBody = new QWidget(windowFrame);
     windowBody->setObjectName("windowBody");
-    auto *bodyLayout = new QHBoxLayout(windowBody);
+    auto *bodyLayout = new QVBoxLayout(windowBody);
     bodyLayout->setContentsMargins(0, 0, 0, 0);
     bodyLayout->setSpacing(0);
-    bodyLayout->addWidget(buildSidebar());
 
     auto *contentShell = new QWidget(windowBody);
     contentShell->setObjectName("contentShell");
     auto *contentLayout = new QVBoxLayout(contentShell);
     contentLayout->setContentsMargins(0, 0, 0, 0);
     contentLayout->setSpacing(0);
+    contentLayout->addWidget(buildTopTabs());
 
     m_pages = new QStackedWidget(contentShell);
     m_pages->setObjectName("contentPages");
@@ -298,91 +298,60 @@ QWidget *MainWindow::buildWindowTitleBar() {
     return titleBar;
 }
 
-QWidget *MainWindow::buildSidebar() {
-    auto *sidebar = new QWidget(this);
-    sidebar->setObjectName("sidebar");
-    sidebar->setFixedWidth(248);
+QWidget *MainWindow::buildTopTabs() {
+    auto *tabsShell = new QWidget(this);
+    tabsShell->setObjectName("topTabs");
 
-    auto *layout = new QVBoxLayout(sidebar);
-    layout->setContentsMargins(16, 18, 16, 16);
-    layout->setSpacing(18);
+    auto *layout = new QVBoxLayout(tabsShell);
+    layout->setContentsMargins(16, 14, 16, 10);
+    layout->setSpacing(10);
 
-    auto *brandBlock = new QWidget(sidebar);
-    auto *brandLayout = new QHBoxLayout(brandBlock);
-    brandLayout->setContentsMargins(0, 0, 0, 0);
-    brandLayout->setSpacing(12);
+    auto *runtimeRow = new QWidget(tabsShell);
+    runtimeRow->setObjectName("topRuntime");
+    auto *runtimeLayout = new QHBoxLayout(runtimeRow);
+    runtimeLayout->setContentsMargins(0, 0, 0, 0);
+    runtimeLayout->setSpacing(12);
 
-    auto *brandCopy = new QVBoxLayout();
-    brandCopy->setSpacing(4);
-    auto *eyebrow = new QLabel("Main control", brandBlock);
-    eyebrow->setObjectName("eyebrow");
-    auto *title = new QLabel("tunlet", brandBlock);
-    title->setObjectName("sidebarTitle");
-    brandCopy->addWidget(eyebrow);
-    brandCopy->addWidget(title);
-    brandLayout->addLayout(brandCopy, 1);
+    auto *runtimeCopy = new QVBoxLayout();
+    runtimeCopy->setSpacing(3);
+    auto *runtimeTitle = new QLabel("Primary action: switch Clash mode fast", runtimeRow);
+    runtimeTitle->setObjectName("runtimeTitle");
+    m_topRuntimeSummaryLabel = new QLabel(runtimeRow);
+    m_topRuntimeSummaryLabel->setObjectName("runtimeSummary");
+    m_topRuntimeSummaryLabel->setWordWrap(true);
+    runtimeCopy->addWidget(runtimeTitle);
+    runtimeCopy->addWidget(m_topRuntimeSummaryLabel);
+    runtimeLayout->addLayout(runtimeCopy, 1);
 
-    m_sidebarStatusLabel = new QLabel(brandBlock);
-    m_sidebarStatusLabel->setObjectName("statusPill");
-    brandLayout->addWidget(m_sidebarStatusLabel, 0, Qt::AlignTop);
-    layout->addWidget(brandBlock);
+    m_topRuntimeStatusLabel = new QLabel(runtimeRow);
+    m_topRuntimeStatusLabel->setObjectName("statusPill");
+    runtimeLayout->addWidget(m_topRuntimeStatusLabel, 0, Qt::AlignTop);
+    layout->addWidget(runtimeRow);
 
-    auto *modeCard = new QWidget(sidebar);
-    modeCard->setObjectName("sidebarCard");
-    auto *modeLayout = new QVBoxLayout(modeCard);
-    modeLayout->setContentsMargins(14, 14, 14, 14);
-    modeLayout->setSpacing(6);
-    auto *modeMeta = new QLabel("Current mode", modeCard);
-    modeMeta->setObjectName("metaLabel");
-    m_sidebarModeLabel = new QLabel(modeCard);
-    m_sidebarModeLabel->setObjectName("summaryValue");
-    m_sidebarModeDetailLabel = new QLabel(modeCard);
-    m_sidebarModeDetailLabel->setObjectName("summarySub");
-    m_sidebarModeDetailLabel->setWordWrap(true);
-    modeLayout->addWidget(modeMeta);
-    modeLayout->addWidget(m_sidebarModeLabel);
-    modeLayout->addWidget(m_sidebarModeDetailLabel);
-    layout->addWidget(modeCard);
-
-    auto *navList = new QWidget(sidebar);
-    auto *navLayout = new QVBoxLayout(navList);
-    navLayout->setContentsMargins(0, 0, 0, 0);
-    navLayout->setSpacing(8);
+    auto *tabRow = new QWidget(tabsShell);
+    auto *tabLayout = new QHBoxLayout(tabRow);
+    tabLayout->setContentsMargins(0, 0, 0, 0);
+    tabLayout->setSpacing(8);
     const QVector<QPair<QString, QString>> sections = {
-        {"Main", "Runtime state and fast mode switching"},
-        {"Rules", "Local routing files with validation and save control"},
-        {"Settings / Info", "Runtime detail and live config editing"},
+        {"Main", "Mode + health"},
+        {"Rules", "Local JSON edit"},
+        {"Settings / Info", "Versions + paths"},
     };
     for (int index = 0; index < sections.size(); ++index) {
-        auto *button = new QPushButton(QString("%1\n%2").arg(sections.at(index).first, sections.at(index).second), navList);
-        button->setObjectName("sidebarTabButton");
+        auto *button = new QPushButton(QString("%1\n%2").arg(sections.at(index).first, sections.at(index).second), tabRow);
+        button->setObjectName("topTabButton");
         button->setProperty("active", false);
-        button->setMinimumHeight(72);
+        button->setMinimumHeight(56);
         button->setCursor(Qt::PointingHandCursor);
         m_navButtons.push_back(button);
         connect(button, &QPushButton::clicked, this, [this, index]() {
             setCurrentPage(index);
         });
-        navLayout->addWidget(button);
+        tabLayout->addWidget(button, 1);
     }
-    layout->addWidget(navList);
+    layout->addWidget(tabRow);
 
-    auto *hostCard = new QWidget(sidebar);
-    hostCard->setObjectName("sidebarCard");
-    auto *hostLayout = new QVBoxLayout(hostCard);
-    hostLayout->setContentsMargins(14, 14, 14, 14);
-    hostLayout->setSpacing(6);
-    auto *hostMeta = new QLabel("Host summary", hostCard);
-    hostMeta->setObjectName("metaLabel");
-    m_sidebarHostSummaryLabel = new QLabel(hostCard);
-    m_sidebarHostSummaryLabel->setObjectName("summarySub");
-    m_sidebarHostSummaryLabel->setWordWrap(true);
-    hostLayout->addWidget(hostMeta);
-    hostLayout->addWidget(m_sidebarHostSummaryLabel);
-    layout->addStretch(1);
-    layout->addWidget(hostCard);
-
-    return sidebar;
+    return tabsShell;
 }
 
 QWidget *MainWindow::buildHealthStrip() {
@@ -446,8 +415,8 @@ QWidget *MainWindow::buildDashboardPage() {
     auto *page = new QWidget(this);
     page->setObjectName("panelPage");
     auto *pageLayout = new QVBoxLayout(page);
-    pageLayout->setContentsMargins(22, 22, 22, 22);
-    pageLayout->setSpacing(16);
+    pageLayout->setContentsMargins(18, 18, 18, 18);
+    pageLayout->setSpacing(14);
 
     auto *panelHead = new QWidget(page);
     auto *headLayout = new QHBoxLayout(panelHead);
@@ -456,10 +425,10 @@ QWidget *MainWindow::buildDashboardPage() {
 
     auto *headCopy = new QVBoxLayout();
     headCopy->setSpacing(6);
-    auto *title = new QLabel("Runtime control", panelHead);
+    auto *title = new QLabel("Main control", panelHead);
     title->setObjectName("panelTitle");
     auto *subtitle = new QLabel(
-        "Immediate mode switching first, then connection health, local diagnostics, and runtime detail.",
+        "More compact, almost tray-like main view: mode first, runtime context directly below it.",
         panelHead);
     subtitle->setObjectName("panelSubtitle");
     subtitle->setWordWrap(true);
@@ -471,47 +440,6 @@ QWidget *MainWindow::buildDashboardPage() {
     m_mainPanelStatusLabel->setObjectName("statusPill");
     headLayout->addWidget(m_mainPanelStatusLabel, 0, Qt::AlignTop);
     pageLayout->addWidget(panelHead);
-
-    auto *mainGrid = new QGridLayout();
-    mainGrid->setHorizontalSpacing(16);
-    mainGrid->setVerticalSpacing(16);
-    mainGrid->setColumnStretch(0, 12);
-    mainGrid->setColumnStretch(1, 9);
-
-    auto *stateCard = new QWidget(page);
-    stateCard->setObjectName("card");
-    auto *stateLayout = new QVBoxLayout(stateCard);
-    stateLayout->setContentsMargins(18, 18, 18, 18);
-    stateLayout->setSpacing(14);
-
-    auto *stateHead = new QWidget(stateCard);
-    auto *stateHeadLayout = new QHBoxLayout(stateHead);
-    stateHeadLayout->setContentsMargins(0, 0, 0, 0);
-    stateHeadLayout->setSpacing(12);
-    auto *stateCopy = new QVBoxLayout();
-    stateCopy->setSpacing(4);
-    auto *stateTitle = new QLabel("Current state", stateHead);
-    stateTitle->setObjectName("cardTitleStrong");
-    auto *stateSubtitle = new QLabel("Local runtime snapshot", stateHead);
-    stateSubtitle->setObjectName("cardSubtitle");
-    stateCopy->addWidget(stateTitle);
-    stateCopy->addWidget(stateSubtitle);
-    stateHeadLayout->addLayout(stateCopy, 1);
-    auto *statePill = new QLabel("Runtime", stateHead);
-    statePill->setObjectName("statusPill");
-    statePill->setProperty("tone", "neutral");
-    stateHeadLayout->addWidget(statePill, 0, Qt::AlignTop);
-    stateLayout->addWidget(stateHead);
-
-    auto *summaryGrid = new QGridLayout();
-    summaryGrid->setHorizontalSpacing(18);
-    summaryGrid->setVerticalSpacing(14);
-    summaryGrid->addWidget(buildSummaryItem(stateCard, "Service status", &m_serviceStatusValue, &m_serviceStatusDetail), 0, 0);
-    summaryGrid->addWidget(buildSummaryItem(stateCard, "Active mode", &m_stateModeValue, &m_stateModeDetail), 0, 1);
-    summaryGrid->addWidget(buildSummaryItem(stateCard, "Selected profile", &m_selectedProfileValue, &m_selectedProfileDetail), 1, 0);
-    summaryGrid->addWidget(buildSummaryItem(stateCard, "Last refresh", &m_lastReloadValue, &m_lastReloadDetail), 1, 1);
-    stateLayout->addLayout(summaryGrid);
-    mainGrid->addWidget(stateCard, 0, 0);
 
     auto *selectorCard = new QWidget(page);
     selectorCard->setObjectName("card");
@@ -525,9 +453,9 @@ QWidget *MainWindow::buildDashboardPage() {
     selectorHeadLayout->setSpacing(12);
     auto *selectorCopy = new QVBoxLayout();
     selectorCopy->setSpacing(4);
-    auto *selectorTitle = new QLabel("Primary mode selector", selectorHead);
+    auto *selectorTitle = new QLabel("Connection mode", selectorHead);
     selectorTitle->setObjectName("cardTitleStrong");
-    auto *selectorSubtitle = new QLabel("Direct, Proxy, Auto, plus any configured extra profiles", selectorHead);
+    auto *selectorSubtitle = new QLabel("Immediate mode switch stays the main action of the window", selectorHead);
     selectorSubtitle->setObjectName("cardSubtitle");
     selectorSubtitle->setWordWrap(true);
     selectorCopy->addWidget(selectorTitle);
@@ -573,23 +501,63 @@ QWidget *MainWindow::buildDashboardPage() {
     m_profileDescriptionLabel->setWordWrap(true);
     selectorLayout->addWidget(m_profileDescriptionLabel);
 
+    auto *modeSummaryGrid = new QGridLayout();
+    modeSummaryGrid->setHorizontalSpacing(10);
+    modeSummaryGrid->setVerticalSpacing(10);
+    modeSummaryGrid->addWidget(buildSummaryItem(selectorCard, "Selected profile", &m_selectedProfileValue, &m_selectedProfileDetail), 0, 0);
+    modeSummaryGrid->addWidget(buildSummaryItem(selectorCard, "Last reload", &m_lastReloadValue, &m_lastReloadDetail), 0, 1);
+    selectorLayout->addLayout(modeSummaryGrid);
+
     auto *actionRow = new QHBoxLayout();
     actionRow->setSpacing(10);
-    auto *refreshButton = new QPushButton("Refresh runtime", selectorCard);
+    auto *refreshButton = new QPushButton("Reload config", selectorCard);
     refreshButton->setObjectName("ghostButton");
-    connect(refreshButton, &QPushButton::clicked, this, [this]() {
+    connect(refreshButton, &QPushButton::clicked, this, &MainWindow::reloadSettingsFile);
+    auto *reloadButton = new QPushButton("Refresh runtime", selectorCard);
+    reloadButton->setObjectName("ghostButton");
+    connect(reloadButton, &QPushButton::clicked, this, [this]() {
         m_modeController->refreshStatus();
         m_diagnosticsService->refreshNow();
         showActionMessage("Requested runtime refresh", 3000);
     });
-    auto *reloadButton = new QPushButton("Reload config", selectorCard);
-    reloadButton->setObjectName("ghostButton");
-    connect(reloadButton, &QPushButton::clicked, this, &MainWindow::reloadSettingsFile);
     actionRow->addWidget(refreshButton);
     actionRow->addWidget(reloadButton);
     actionRow->addStretch(1);
     selectorLayout->addLayout(actionRow);
-    mainGrid->addWidget(selectorCard, 0, 1);
+    pageLayout->addWidget(selectorCard);
+
+    auto *stateCard = new QWidget(page);
+    stateCard->setObjectName("card");
+    auto *stateLayout = new QVBoxLayout(stateCard);
+    stateLayout->setContentsMargins(18, 18, 18, 18);
+    stateLayout->setSpacing(14);
+
+    auto *stateHead = new QWidget(stateCard);
+    auto *stateHeadLayout = new QHBoxLayout(stateHead);
+    stateHeadLayout->setContentsMargins(0, 0, 0, 0);
+    stateHeadLayout->setSpacing(12);
+    auto *stateCopy = new QVBoxLayout();
+    stateCopy->setSpacing(4);
+    auto *stateTitle = new QLabel("Current state", stateHead);
+    stateTitle->setObjectName("cardTitleStrong");
+    auto *stateSubtitle = new QLabel("Local runtime snapshot", stateHead);
+    stateSubtitle->setObjectName("cardSubtitle");
+    stateCopy->addWidget(stateTitle);
+    stateCopy->addWidget(stateSubtitle);
+    stateHeadLayout->addLayout(stateCopy, 1);
+    auto *statePill = new QLabel("Runtime", stateHead);
+    statePill->setObjectName("statusPill");
+    statePill->setProperty("tone", "neutral");
+    stateHeadLayout->addWidget(statePill, 0, Qt::AlignTop);
+    stateLayout->addWidget(stateHead);
+
+    auto *summaryGrid = new QGridLayout();
+    summaryGrid->setHorizontalSpacing(12);
+    summaryGrid->setVerticalSpacing(12);
+    summaryGrid->addWidget(buildSummaryItem(stateCard, "Service status", &m_serviceStatusValue, &m_serviceStatusDetail), 0, 0);
+    summaryGrid->addWidget(buildSummaryItem(stateCard, "Active mode", &m_stateModeValue, &m_stateModeDetail), 1, 0);
+    stateLayout->addLayout(summaryGrid);
+    pageLayout->addWidget(stateCard);
 
     auto *connectionCard = new QWidget(page);
     connectionCard->setObjectName("card");
@@ -598,42 +566,26 @@ QWidget *MainWindow::buildDashboardPage() {
     connectionLayout->setSpacing(14);
     auto *connectionTitle = new QLabel("Connection info", connectionCard);
     connectionTitle->setObjectName("cardTitleStrong");
-    auto *connectionSubtitle = new QLabel("Fast scanning for controller health", connectionCard);
+    auto *connectionSubtitle = new QLabel("Technical details still readable in a narrow window", connectionCard);
     connectionSubtitle->setObjectName("cardSubtitle");
     connectionLayout->addWidget(connectionTitle);
     connectionLayout->addWidget(connectionSubtitle);
 
     auto *metricGrid = new QGridLayout();
-    metricGrid->setHorizontalSpacing(12);
-    metricGrid->setVerticalSpacing(12);
+    metricGrid->setHorizontalSpacing(10);
+    metricGrid->setVerticalSpacing(10);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Clash API", &m_connectionEndpointValue), 0, 0);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Diagnostics", &m_connectionDiagnosticsValue), 0, 1);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Public IPs", &m_connectionIpValue), 1, 0);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Location", &m_connectionLocationValue), 1, 1);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Routing summary", &m_connectionRoutingValue), 2, 0);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Supported modes", &m_connectionModesValue), 2, 1);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Config root", &m_configRootValue), 2, 1);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Controller address", &m_controllerAddressValue), 3, 0);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Rules directory", &m_rulesDirectoryValue), 3, 1);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Profile hint", &m_profileHintValue), 4, 0);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Supported modes", &m_connectionModesValue), 4, 1);
     connectionLayout->addLayout(metricGrid);
-    mainGrid->addWidget(connectionCard, 1, 0);
-
-    auto *notesCard = new QWidget(page);
-    notesCard->setObjectName("card");
-    auto *notesLayout = new QVBoxLayout(notesCard);
-    notesLayout->setContentsMargins(18, 18, 18, 18);
-    notesLayout->setSpacing(14);
-    auto *notesTitle = new QLabel("Operational notes", notesCard);
-    notesTitle->setObjectName("cardTitleStrong");
-    auto *notesSubtitle = new QLabel("Tray-friendly clarity and local file context", notesCard);
-    notesSubtitle->setObjectName("cardSubtitle");
-    notesLayout->addWidget(notesTitle);
-    notesLayout->addWidget(notesSubtitle);
-    notesLayout->addWidget(buildMetricItem(notesCard, "Rules directory", &m_rulesDirectoryValue));
-    notesLayout->addWidget(buildMetricItem(notesCard, "Config root", &m_configRootValue));
-    notesLayout->addWidget(buildMetricItem(notesCard, "Profile hint", &m_profileHintValue));
-    notesLayout->addWidget(buildMetricItem(notesCard, "Tray state", &m_traySummaryValue));
-    mainGrid->addWidget(notesCard, 1, 1);
-
-    pageLayout->addLayout(mainGrid);
-    pageLayout->addStretch(1);
+    pageLayout->addWidget(connectionCard);
     return page;
 }
 
@@ -641,8 +593,8 @@ QWidget *MainWindow::buildRuleSetsPage() {
     auto *page = new QWidget(this);
     page->setObjectName("panelPage");
     auto *pageLayout = new QVBoxLayout(page);
-    pageLayout->setContentsMargins(22, 22, 22, 22);
-    pageLayout->setSpacing(16);
+    pageLayout->setContentsMargins(18, 18, 18, 18);
+    pageLayout->setSpacing(14);
 
     auto *panelHead = new QWidget(page);
     auto *headLayout = new QHBoxLayout(panelHead);
@@ -654,7 +606,7 @@ QWidget *MainWindow::buildRuleSetsPage() {
     auto *title = new QLabel("Local rule files", panelHead);
     title->setObjectName("panelTitle");
     auto *subtitle = new QLabel(
-        "Routing rules stay explicit: file list on the left, editor on the right, validation before save.",
+        "Compact version: select the file first, then keep one active local JSON editor with validation before save.",
         panelHead);
     subtitle->setObjectName("panelSubtitle");
     subtitle->setWordWrap(true);
@@ -667,27 +619,51 @@ QWidget *MainWindow::buildRuleSetsPage() {
     headLayout->addWidget(m_rulePageStatusLabel, 0, Qt::AlignTop);
     pageLayout->addWidget(panelHead);
 
-    auto *rulesLayout = new QHBoxLayout();
-    rulesLayout->setSpacing(16);
+    auto *selectorCard = new QWidget(page);
+    selectorCard->setObjectName("card");
+    auto *selectorLayout = new QVBoxLayout(selectorCard);
+    selectorLayout->setContentsMargins(18, 18, 18, 18);
+    selectorLayout->setSpacing(12);
+    auto *selectorTitle = new QLabel("Rule file", selectorCard);
+    selectorTitle->setObjectName("cardTitleStrong");
+    auto *selectorSubtitle = new QLabel("Choose the active local JSON file for validation and save control", selectorCard);
+    selectorSubtitle->setObjectName("cardSubtitle");
+    selectorSubtitle->setWordWrap(true);
+    selectorLayout->addWidget(selectorTitle);
+    selectorLayout->addWidget(selectorSubtitle);
 
-    auto *filesCard = new QWidget(page);
-    filesCard->setObjectName("card");
-    filesCard->setFixedWidth(286);
-    auto *filesLayout = new QVBoxLayout(filesCard);
-    filesLayout->setContentsMargins(18, 18, 18, 18);
-    filesLayout->setSpacing(12);
-    auto *filesTitle = new QLabel("Rule set", filesCard);
-    filesTitle->setObjectName("cardTitleStrong");
-    auto *filesHint = new QLabel(QString("Located under %1").arg(rulesDirectoryForConfig(m_config)), filesCard);
-    filesHint->setObjectName("cardSubtitle");
-    filesHint->setWordWrap(true);
-    m_ruleFileList = new QListWidget(filesCard);
-    m_ruleFileList->setObjectName("ruleFileList");
-    connect(m_ruleFileList, &QListWidget::currentRowChanged, this, &MainWindow::onRuleFileSelectionChanged);
-    filesLayout->addWidget(filesTitle);
-    filesLayout->addWidget(filesHint);
-    filesLayout->addWidget(m_ruleFileList, 1);
-    rulesLayout->addWidget(filesCard);
+    m_ruleFileCombo = new QComboBox(selectorCard);
+    m_ruleFileCombo->setObjectName("ruleFileCombo");
+    m_ruleFileCombo->setMinimumHeight(60);
+    connect(m_ruleFileCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int index) {
+        if (index >= 0) {
+            onRuleFileSelectionChanged();
+        }
+    });
+    selectorLayout->addWidget(m_ruleFileCombo);
+
+    auto *fileMeta = new QWidget(selectorCard);
+    fileMeta->setObjectName("fileMetaCard");
+    auto *fileMetaLayout = new QGridLayout(fileMeta);
+    fileMetaLayout->setContentsMargins(12, 12, 12, 12);
+    fileMetaLayout->setHorizontalSpacing(10);
+    fileMetaLayout->setVerticalSpacing(8);
+    auto *descriptionKey = new QLabel("Description", fileMeta);
+    descriptionKey->setObjectName("metaLabel");
+    m_ruleFileDescriptionLabel = new QLabel(fileMeta);
+    m_ruleFileDescriptionLabel->setObjectName("metricValue");
+    m_ruleFileDescriptionLabel->setWordWrap(true);
+    auto *pathKey = new QLabel("Path", fileMeta);
+    pathKey->setObjectName("metaLabel");
+    m_ruleFilePathLabel = new QLabel(fileMeta);
+    m_ruleFilePathLabel->setObjectName("monoNote");
+    m_ruleFilePathLabel->setWordWrap(true);
+    fileMetaLayout->addWidget(descriptionKey, 0, 0, Qt::AlignTop);
+    fileMetaLayout->addWidget(m_ruleFileDescriptionLabel, 0, 1);
+    fileMetaLayout->addWidget(pathKey, 1, 0, Qt::AlignTop);
+    fileMetaLayout->addWidget(m_ruleFilePathLabel, 1, 1);
+    selectorLayout->addWidget(fileMeta);
+    pageLayout->addWidget(selectorCard);
 
     auto *editorCard = new QWidget(page);
     editorCard->setObjectName("card");
@@ -761,9 +737,7 @@ QWidget *MainWindow::buildRuleSetsPage() {
     frameLayout->addWidget(m_ruleLineNumbersLabel);
     frameLayout->addWidget(m_editor, 1);
     editorLayout->addWidget(editorFrame, 1);
-    rulesLayout->addWidget(editorCard, 1);
-
-    pageLayout->addLayout(rulesLayout, 1);
+    pageLayout->addWidget(editorCard, 1);
     return page;
 }
 
@@ -989,17 +963,16 @@ void MainWindow::populateRuleFiles() {
         m_ruleFiles.push_back({extra.name, extra.path, extra.description});
     }
 
-    if (!m_ruleFileList) {
+    if (!m_ruleFileCombo) {
         return;
     }
 
     int targetRow = -1;
     {
-        QSignalBlocker blocker(m_ruleFileList);
-        m_ruleFileList->clear();
+        QSignalBlocker blocker(m_ruleFileCombo);
+        m_ruleFileCombo->clear();
         for (const auto &ruleFile : m_ruleFiles) {
-            const QString description = ruleFile.description.isEmpty() ? "Editable local rule-set" : ruleFile.description;
-            m_ruleFileList->addItem(QString("%1\n%2\n%3").arg(ruleFile.name, description, compactPath(ruleFile.path)));
+            m_ruleFileCombo->addItem(ruleFile.name, ruleFile.path);
         }
 
         for (int row = 0; row < m_ruleFiles.size(); ++row) {
@@ -1014,7 +987,7 @@ void MainWindow::populateRuleFiles() {
         }
 
         if (targetRow >= 0) {
-            m_ruleFileList->setCurrentRow(targetRow);
+            m_ruleFileCombo->setCurrentIndex(targetRow);
         }
     }
 
@@ -1065,11 +1038,11 @@ QString MainWindow::selectedModeProfileName() const {
 }
 
 const MainWindow::NamedRuleFile *MainWindow::selectedRuleFile() const {
-    if (!m_ruleFileList) {
+    if (!m_ruleFileCombo) {
         return nullptr;
     }
 
-    const int row = m_ruleFileList->currentRow();
+    const int row = m_ruleFileCombo->currentIndex();
     if (row < 0 || row >= m_ruleFiles.size()) {
         return nullptr;
     }
@@ -1196,20 +1169,16 @@ void MainWindow::updateDashboardCards() {
                                         : QString("Disabled");
 
     setStatusPill(m_headerReachabilityLabel, apiSummary, tone);
-    setStatusPill(m_sidebarStatusLabel, busy ? "Syncing" : reachable ? "Running" : "Offline", tone);
+    setStatusPill(m_topRuntimeStatusLabel, busy ? "Syncing" : reachable ? "Running" : "Offline", tone);
     setStatusPill(m_mainPanelStatusLabel, busy ? "Runtime syncing" : reachable ? "Controller healthy" : "Controller degraded", tone);
     setStatusPill(m_rulePageStatusLabel, "Safe local edits", "warn");
     setStatusPill(m_settingsPageStatusLabel, "Local-only", "neutral");
 
-    if (m_sidebarModeLabel) {
-        m_sidebarModeLabel->setText(displayModeName(activeProfile));
-    }
-    if (m_sidebarModeDetailLabel) {
-        m_sidebarModeDetailLabel->setText(QString("%1\nEndpoint %2").arg(detailText, endpoint));
-    }
-    if (m_sidebarHostSummaryLabel) {
-        m_sidebarHostSummaryLabel->setText(
-            QString("%1 at %2\nConfig root %3").arg(m_trayAvailable ? "Tray companion available" : "Main window only", endpoint, configRootForConfig(m_config)));
+    if (m_topRuntimeSummaryLabel) {
+        m_topRuntimeSummaryLabel->setText(
+            QString("%1 active · clash API on %2 · %3").arg(displayModeName(activeProfile),
+                                                            endpoint,
+                                                            m_trayAvailable ? "tray companion available" : "local-only runtime"));
     }
 
     if (m_currentProfileLabel) {
@@ -1265,6 +1234,9 @@ void MainWindow::updateDashboardCards() {
     if (m_connectionRoutingValue) {
         m_connectionRoutingValue->setText(QString("%1 local rule files active").arg(m_ruleFiles.size()));
     }
+    if (m_controllerAddressValue) {
+        m_controllerAddressValue->setText(endpoint);
+    }
     if (m_connectionModesValue) {
         m_connectionModesValue->setText(joinOrUnknown(m_lastStatus.supportedModes));
     }
@@ -1278,10 +1250,6 @@ void MainWindow::updateDashboardCards() {
     if (m_profileHintValue) {
         m_profileHintValue->setText(profileHint);
     }
-    if (m_traySummaryValue) {
-        m_traySummaryValue->setText(m_trayAvailable ? "Tray menu available for quick switching" : "No tray host detected on this session");
-    }
-
     if (m_appBuildValue) {
         const QString appValue = QCoreApplication::applicationVersion().isEmpty()
                                      ? QString("%1 · local build").arg(QCoreApplication::applicationName())
@@ -1362,6 +1330,13 @@ void MainWindow::onRuleFileSelectionChanged() {
     const auto *file = selectedRuleFile();
     if (!file) {
         return;
+    }
+
+    if (m_ruleFileDescriptionLabel) {
+        m_ruleFileDescriptionLabel->setText(file->description.isEmpty() ? "Editable local JSON rule-set" : file->description);
+    }
+    if (m_ruleFilePathLabel) {
+        m_ruleFilePathLabel->setText(compactPath(file->path));
     }
 
     const auto result = m_ruleSetService->loadFile(file->path);

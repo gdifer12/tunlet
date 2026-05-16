@@ -63,7 +63,7 @@ private:
 
     void buildUi(bool trayAvailable);
     QWidget *buildWindowTitleBar();
-    QWidget *buildSidebar();
+    QWidget *buildTopTabs();
     QWidget *buildHealthStrip();
     QWidget *buildDashboardPage();
     QWidget *buildRuleSetsPage();
@@ -103,10 +103,8 @@ private:
 
     QLabel *m_headerReachabilityLabel = nullptr;
     QLabel *m_windowSizeLabel = nullptr;
-    QLabel *m_sidebarStatusLabel = nullptr;
-    QLabel *m_sidebarModeLabel = nullptr;
-    QLabel *m_sidebarModeDetailLabel = nullptr;
-    QLabel *m_sidebarHostSummaryLabel = nullptr;
+    QLabel *m_topRuntimeSummaryLabel = nullptr;
+    QLabel *m_topRuntimeStatusLabel = nullptr;
 
     QLabel *m_mainPanelStatusLabel = nullptr;
     QLabel *m_currentProfileLabel = nullptr;
@@ -126,6 +124,7 @@ private:
     QLabel *m_connectionLocationValue = nullptr;
     QLabel *m_connectionRoutingValue = nullptr;
     QLabel *m_connectionModesValue = nullptr;
+    QLabel *m_controllerAddressValue = nullptr;
     QLabel *m_rulesDirectoryValue = nullptr;
     QLabel *m_configRootValue = nullptr;
     QLabel *m_profileHintValue = nullptr;
@@ -133,13 +132,15 @@ private:
     QComboBox *m_profileCombo = nullptr;
 
     QLabel *m_rulePageStatusLabel = nullptr;
+    QComboBox *m_ruleFileCombo = nullptr;
+    QLabel *m_ruleFileDescriptionLabel = nullptr;
+    QLabel *m_ruleFilePathLabel = nullptr;
     QLabel *m_ruleEditorTitleLabel = nullptr;
     QLabel *m_ruleEditorPathLabel = nullptr;
     QLabel *m_ruleBannerTitleLabel = nullptr;
     QLabel *m_ruleBannerMessageLabel = nullptr;
     QLabel *m_ruleBannerStateLabel = nullptr;
     QLabel *m_ruleLineNumbersLabel = nullptr;
-    QListWidget *m_ruleFileList = nullptr;
     QPlainTextEdit *m_editor = nullptr;
 
     QLabel *m_settingsPageStatusLabel = nullptr;
