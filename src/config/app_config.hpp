@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 namespace tunlet::config {
@@ -31,19 +32,28 @@ struct RuleSetPathsConfig {
     QVector<RuleSetFileConfig> extraFiles;
 };
 
-struct ExternalIpConfig {
-    bool enabled = false;
-    QString ipv4Url;
-    QString ipv6Url;
-    QString proxyUrl;
-    QString locationUrlTemplate = "https://ipwho.is/{ip}";
+struct DiagnosticsCommandConfig {
+    QString executable;
+    QStringList args;
+};
+
+struct DiagnosticsLocationConfig {
+    bool enabled = true;
+    QString databasePath;
+};
+
+struct DiagnosticsConnectionConfig {
+    DiagnosticsCommandConfig ipv4;
+    DiagnosticsCommandConfig timing;
+    DiagnosticsCommandConfig dns;
+    DiagnosticsLocationConfig location;
 };
 
 struct DiagnosticsConfig {
     bool enabled = true;
     int refreshIntervalMs = 10000;
     int requestTimeoutMs = 5000;
-    ExternalIpConfig externalIp;
+    DiagnosticsConnectionConfig connection;
 };
 
 struct ThemeConfig {

@@ -169,6 +169,8 @@ private:
     QLabel *m_infoRulesDirValue = nullptr;
     QLabel *m_infoEndpointValue = nullptr;
     QLabel *m_infoDiagnosticsValue = nullptr;
+    QLabel *m_infoProbeCommandsValue = nullptr;
+    QLabel *m_infoGeoDbValue = nullptr;
     QLabel *m_infoProfilesValue = nullptr;
     QLabel *m_infoThemeValue = nullptr;
     QLabel *m_stateApiStatusValue = nullptr;

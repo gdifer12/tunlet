@@ -1,28 +1,17 @@
 #include "diagnostics/diagnostics_service.hpp"
 
 #include "clash/mode_controller.hpp"
+#include "diagnostics/diagnostics_parsing.hpp"
 
+#include <QDateTime>
+#include <QFileInfo>
 #include <QHostAddress>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonValue>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QRegularExpression>
-#include <QUrl>
+#include <QStringList>
+
+#include <maxminddb.h>
 
 namespace tunlet::diagnostics {
 namespace {
-
-bool isUsableIpAddress(const QString &value) {
-    if (value.isEmpty() || value.startsWith("error:", Qt::CaseInsensitive) || value == "timeout") {
-        return false;
-    }
-
-    QHostAddress address;
-    return address.setAddress(value.trimmed());
-}
 
 QString formatRate(double valueKbps) {
     if (valueKbps < 0.0) {
@@ -51,166 +40,73 @@ QString formatBytes(double bytes) {
     return QString("%1 %2").arg(value, 0, 'f', precision).arg(QString::fromUtf8(suffixes[suffixIndex]));
 }
 
-QString readJsonStringByPath(const QJsonObject &object, const QString &path) {
-    const QStringList parts = path.split('.');
-    QJsonValue current = object;
-    for (const QString &part : parts) {
-        if (!current.isObject()) {
-            return {};
-        }
-        current = current.toObject().value(part);
-    }
-    return current.isString() ? current.toString().trimmed() : QString{};
+QString commandName(const config::DiagnosticsCommandConfig &command) {
+    const QFileInfo info(command.executable);
+    return info.fileName().isEmpty() ? command.executable : info.fileName();
 }
 
-QString firstJsonString(const QJsonObject &object, std::initializer_list<const char *> paths) {
-    for (const char *path : paths) {
-        const QString value = readJsonStringByPath(object, QString::fromUtf8(path));
-        if (!value.isEmpty()) {
-            return value;
-        }
-    }
-    return {};
-}
-
-QString cleanIpToken(QString token) {
-    token = token.trimmed();
-    while (!token.isEmpty() && QString("[]()<>\"'").contains(token.front())) {
-        token.remove(0, 1);
-    }
-    while (!token.isEmpty() && QString("[]()<>\"'.,;").contains(token.back())) {
-        token.chop(1);
-    }
-    return token.trimmed();
-}
-
-QString extractUsableIpToken(const QString &text) {
-    const QStringList tokens = text.split(QRegularExpression("[\\s,]+"), Qt::SkipEmptyParts);
-    for (const QString &token : tokens) {
-        const QString candidate = cleanIpToken(token);
-        if (isUsableIpAddress(candidate)) {
-            return candidate;
-        }
-    }
-    return {};
-}
-
-QString parseExternalIpResponse(const QByteArray &body) {
-    const QString text = QString::fromUtf8(body).trimmed();
-    if (text.isEmpty()) {
-        return "error: empty response";
-    }
-
-    const QString directIp = extractUsableIpToken(text);
-    if (!directIp.isEmpty()) {
-        return directIp;
-    }
-
-    QJsonParseError parseError;
-    const QJsonDocument json = QJsonDocument::fromJson(body, &parseError);
-    if (parseError.error == QJsonParseError::NoError) {
-        if (json.isObject()) {
-            const QJsonObject object = json.object();
-            for (const QString &value : {firstJsonString(object, {"ip", "query", "address", "ip_addr", "data.ip", "result.ip"}),
-                                         firstJsonString(object, {"origin"})}) {
-                const QString candidate = extractUsableIpToken(value);
-                if (!candidate.isEmpty()) {
-                    return candidate;
-                }
-            }
-        } else if (json.isArray()) {
-            const QJsonArray array = json.array();
-            for (const QJsonValue &value : array) {
-                if (!value.isString()) {
-                    continue;
-                }
-                const QString candidate = extractUsableIpToken(value.toString());
-                if (!candidate.isEmpty()) {
-                    return candidate;
-                }
-            }
-        }
-    }
-
-    return "error: invalid IP response";
-}
-
-QString normalizeExternalRequestUrl(const QString &urlText, const QString &fieldName) {
-    QUrl url(urlText);
-    if (!url.isValid()) {
-        return urlText;
-    }
-
-    const QString host = url.host().toLower();
-    const QString path = url.path();
-    if (fieldName == "proxy" && host == "ifconfig.me" && (path.isEmpty() || path == "/")) {
-        url.setPath("/ip");
-    }
-
-    return url.toString();
-}
-
-QString applyIpTemplate(QString templateUrl, const QString &ipAddress) {
-    templateUrl.replace("{ip}", QString::fromUtf8(QUrl::toPercentEncoding(ipAddress)));
-    return templateUrl;
-}
-
-QStringList locationLookupUrls(const config::ExternalIpConfig &externalIp, const QString &ipAddress) {
-    QStringList urls;
-    if (!externalIp.locationUrlTemplate.trimmed().isEmpty()) {
-        urls.push_back(applyIpTemplate(externalIp.locationUrlTemplate, ipAddress));
-    }
-
-    urls.push_back(applyIpTemplate("https://ipapi.co/{ip}/json/", ipAddress));
-    urls.push_back(applyIpTemplate("https://ipinfo.io/{ip}/json", ipAddress));
-    urls.removeDuplicates();
-    return urls;
-}
-
-bool tryApplyLocationResponse(DiagnosticsSnapshot &snapshot, const QString &ipAddress, const QByteArray &body, QString *failureReason) {
-    QJsonParseError parseError;
-    const QJsonDocument json = QJsonDocument::fromJson(body, &parseError);
-    if (parseError.error != QJsonParseError::NoError || !json.isObject()) {
-        if (failureReason) {
-            *failureReason = QString("invalid location JSON: %1").arg(parseError.errorString());
-        }
-        return false;
-    }
-
-    const QJsonObject object = json.object();
-    const bool explicitFailure =
-        (object.contains("success") && object.value("success").isBool() && !object.value("success").toBool()) ||
-        object.value("status").toString() == "fail" ||
-        object.contains("error");
-    if (explicitFailure) {
-        const QString message = firstJsonString(object, {"message", "reason", "error"});
-        if (failureReason) {
-            *failureReason = message.isEmpty() ? "location service rejected the lookup" : message;
-        }
-        return false;
-    }
-
-    const QString city = firstJsonString(object, {"city"});
-    const QString region = firstJsonString(object, {"region", "regionName"});
-    const QString country = firstJsonString(object, {"country", "country_name"});
-    const QString isp = firstJsonString(object, {"isp", "org", "organization", "connection.isp"});
-
+QString timingBreakdown(const DiagnosticsSnapshot &snapshot) {
     QStringList parts;
-    if (!city.isEmpty()) {
-        parts.push_back(city);
+    if (snapshot.delayDnsMs >= 0) {
+        parts.push_back(QString("DNS %1 ms").arg(snapshot.delayDnsMs));
     }
-    if (!region.isEmpty() && region != city) {
-        parts.push_back(region);
+    if (snapshot.delayConnectMs >= 0) {
+        parts.push_back(QString("Connect %1 ms").arg(snapshot.delayConnectMs));
     }
-    if (!country.isEmpty()) {
-        parts.push_back(country);
+    if (snapshot.delayTlsMs >= 0) {
+        parts.push_back(QString("TLS %1 ms").arg(snapshot.delayTlsMs));
+    }
+    return parts.isEmpty() ? QString("Delay components unavailable") : parts.join(" · ");
+}
+
+QString lookupMmdbString(const MMDB_entry_s *entry,
+                         const char *segment1,
+                         const char *segment2 = nullptr,
+                         const char *segment3 = nullptr,
+                         const char *segment4 = nullptr) {
+    MMDB_entry_data_s entryData;
+    int status = MMDB_get_value(const_cast<MMDB_entry_s *>(entry), &entryData, segment1, segment2, segment3, segment4, nullptr);
+    if (status != MMDB_SUCCESS || !entryData.has_data || entryData.type != MMDB_DATA_TYPE_UTF8_STRING) {
+        return {};
     }
 
-    snapshot.location = parts.isEmpty() ? "Unknown location" : parts.join(", ");
-    snapshot.locationDetail =
-        isp.isEmpty() ? QString("Lookup IP: %1").arg(ipAddress)
-                      : QString("Lookup IP: %1 | ISP: %2").arg(ipAddress, isp);
-    return true;
+    return QString::fromUtf8(entryData.utf8_string, entryData.data_size).trimmed();
+}
+
+bool isUsableIpAddress(const QString &value) {
+    if (value.isEmpty()) {
+        return false;
+    }
+
+    QHostAddress address;
+    return address.setAddress(value.trimmed());
+}
+
+QString locationLookupError(const QString &ipAddress, const QString &reason) {
+    return QString("Location lookup failed for %1: %2").arg(ipAddress, reason);
+}
+
+QString describeProcessFailure(const QString &probeName, QProcess *process, const QByteArray &stderrOutput, int timeoutMs) {
+    if (process->property("timedOut").toBool()) {
+        return QString("%1 timed out after %2 ms").arg(probeName).arg(timeoutMs);
+    }
+    if (process->error() == QProcess::FailedToStart) {
+        return QString("%1 failed to start: %2").arg(probeName, process->errorString());
+    }
+    if (process->exitStatus() != QProcess::NormalExit) {
+        return QString("%1 crashed").arg(probeName);
+    }
+
+    const QString stderrText = QString::fromUtf8(stderrOutput).trimmed();
+    if (process->exitCode() != 0) {
+        if (!stderrText.isEmpty()) {
+            return QString("%1 failed: %2").arg(probeName, stderrText);
+        }
+        return QString("%1 failed with exit code %2").arg(probeName).arg(process->exitCode());
+    }
+
+    return stderrText.isEmpty() ? QString("%1 failed").arg(probeName)
+                                : QString("%1 failed: %2").arg(probeName, stderrText);
 }
 
 }  // namespace
@@ -220,10 +116,13 @@ DiagnosticsService::DiagnosticsService(const config::AppConfig &config, clash::C
     connect(m_client, &clash::ClashApiClient::healthCheckFinished, this, &DiagnosticsService::handleHealthResult);
     connect(m_client, &clash::ClashApiClient::trafficFinished, this, &DiagnosticsService::handleTrafficResult);
     connect(&m_timer, &QTimer::timeout, this, &DiagnosticsService::refreshNow);
+    updateConfigurationSnapshot();
 }
 
 void DiagnosticsService::start() {
+    updateConfigurationSnapshot();
     if (!m_config.diagnostics.enabled) {
+        resetConnectionSnapshot("Diagnostics disabled");
         return;
     }
 
@@ -239,33 +138,36 @@ void DiagnosticsService::refreshNow() {
     m_client->checkHealth(m_config.clashApi);
     m_client->fetchTraffic(m_config.clashApi);
 
-    if (!m_config.diagnostics.externalIp.enabled) {
-        return;
-    }
+    ++m_probeGeneration;
+    const quint64 generation = m_probeGeneration;
+    m_snapshot.externalDetail = "Refreshing connection diagnostics";
+    emitSnapshotUpdate();
 
-    if (!m_config.diagnostics.externalIp.ipv4Url.isEmpty()) {
-        issueOptionalExternalRequest(m_config.diagnostics.externalIp.ipv4Url, "ipv4");
-    }
-    if (!m_config.diagnostics.externalIp.ipv6Url.isEmpty()) {
-        issueOptionalExternalRequest(m_config.diagnostics.externalIp.ipv6Url, "ipv6");
-    }
-    if (!m_config.diagnostics.externalIp.proxyUrl.isEmpty()) {
-        issueOptionalExternalRequest(m_config.diagnostics.externalIp.proxyUrl, "proxy");
-    }
+    startIpv4Probe(generation);
+    startTimingProbe(generation);
+    startDnsProbe(generation);
 }
 
 void DiagnosticsService::updateConfig(const config::AppConfig &config) {
     const bool wasEnabled = m_config.diagnostics.enabled;
     m_config = config;
     m_lastObservedModeValue.clear();
+    updateConfigurationSnapshot();
+
     if (!m_config.diagnostics.enabled) {
         m_timer.stop();
+        abortProbe(m_ipv4Process);
+        abortProbe(m_timingProcess);
+        abortProbe(m_dnsProcess);
+        resetConnectionSnapshot("Diagnostics disabled");
         return;
     }
 
     m_timer.start(m_config.diagnostics.refreshIntervalMs);
     if (!wasEnabled) {
         refreshNow();
+    } else {
+        emitSnapshotUpdate();
     }
 }
 
@@ -291,38 +193,10 @@ void DiagnosticsService::observeModeStatus(const tunlet::clash::ModeStatus &stat
     refreshNow();
 }
 
-void DiagnosticsService::issueOptionalExternalRequest(const QString &url, const char *fieldName) {
-    const QString field = QString::fromUtf8(fieldName);
-    auto *reply = m_network.get(QNetworkRequest(QUrl(normalizeExternalRequestUrl(url, field))));
-    QTimer::singleShot(m_config.diagnostics.requestTimeoutMs, reply, [reply]() {
-        if (reply->isRunning()) {
-            reply->setProperty("timedOut", true);
-            reply->abort();
-        }
-    });
-
-    connect(reply, &QNetworkReply::finished, this, [this, reply, fieldName]() {
-        const QString field = QString::fromUtf8(fieldName);
-        QString value;
-        if (reply->property("timedOut").toBool()) {
-            value = "timeout";
-        } else if (reply->error() != QNetworkReply::NoError) {
-            value = QString("error: %1").arg(reply->errorString());
-        } else {
-            value = parseExternalIpResponse(reply->readAll());
-        }
-
-        updateExternalField(field, value);
-        reply->deleteLater();
-    });
-}
-
 void DiagnosticsService::handleHealthResult(const clash::HealthCheckResult &result) {
     m_snapshot.apiReachable = result.ok;
     m_snapshot.apiDetail = result.detail;
-    m_snapshot.apiLatencyMs = result.latencyMs;
-    m_snapshot.lastUpdated = QDateTime::currentDateTime();
-    emit diagnosticsUpdated(m_snapshot);
+    emitSnapshotUpdate();
 }
 
 void DiagnosticsService::handleTrafficResult(const clash::TrafficResult &result) {
@@ -342,95 +216,370 @@ void DiagnosticsService::handleTrafficResult(const clash::TrafficResult &result)
         }
     }
 
-    m_snapshot.lastUpdated = QDateTime::currentDateTime();
-    emit diagnosticsUpdated(m_snapshot);
+    emitSnapshotUpdate();
 }
 
-void DiagnosticsService::updateExternalField(const QString &fieldName, const QString &value) {
-    if (fieldName == "ipv4") {
-        m_snapshot.ipv4 = value;
-    } else if (fieldName == "ipv6") {
-        m_snapshot.ipv6 = value;
-    } else if (fieldName == "proxy") {
-        m_snapshot.proxyIp = value;
-    }
-
-    m_snapshot.externalDetail = "External diagnostics updated";
-    const QString locationCandidate = isUsableIpAddress(m_snapshot.proxyIp)
-                                          ? m_snapshot.proxyIp
-                                          : (isUsableIpAddress(m_snapshot.ipv4) ? m_snapshot.ipv4 : m_snapshot.ipv6);
-    if (!locationCandidate.isEmpty()) {
-        issueLocationLookup(locationCandidate);
-    } else {
-        m_snapshot.location.clear();
-        m_snapshot.locationDetail = "Waiting for a usable public IP before resolving location.";
-        m_lastLocationLookupIp.clear();
-    }
-    m_snapshot.lastUpdated = QDateTime::currentDateTime();
-    emit diagnosticsUpdated(m_snapshot);
-}
-
-void DiagnosticsService::issueLocationLookup(const QString &ipAddress) {
-    if (ipAddress.isEmpty() || (ipAddress == m_lastLocationLookupIp && !m_snapshot.location.isEmpty())) {
+void DiagnosticsService::updateConfigurationSnapshot() {
+    const auto &diagnostics = m_config.diagnostics;
+    if (!diagnostics.enabled) {
+        m_snapshot.configurationSummary = "Disabled";
+        m_snapshot.configurationDetail = "Connection diagnostics are disabled in config.";
         return;
     }
 
-    m_lastLocationLookupIp = ipAddress;
-    m_snapshot.location = "Resolving...";
-    m_snapshot.locationDetail = QString("Resolving location for %1...").arg(ipAddress);
-    m_snapshot.lastUpdated = QDateTime::currentDateTime();
-    emit diagnosticsUpdated(m_snapshot);
-
-    const QStringList urls = locationLookupUrls(m_config.diagnostics.externalIp, ipAddress);
-    issueLocationLookupRequest(ipAddress, urls, 0);
+    m_snapshot.configurationSummary =
+        QString("IP %1 · Delay %2 · DNS %3")
+            .arg(commandName(diagnostics.connection.ipv4),
+                 commandName(diagnostics.connection.timing),
+                 commandName(diagnostics.connection.dns));
+    m_snapshot.configurationDetail =
+        QString("Geo DB: %1 · refresh %2 s · timeout %3 ms")
+            .arg(diagnostics.connection.location.databasePath,
+                 QString::number(diagnostics.refreshIntervalMs / 1000.0, 'f', 0),
+                 QString::number(diagnostics.requestTimeoutMs));
 }
 
-void DiagnosticsService::issueLocationLookupRequest(const QString &ipAddress, const QStringList &urls, int index) {
-    if (index >= urls.size()) {
-        m_snapshot.location.clear();
-        if (m_snapshot.locationDetail.startsWith("Resolving location for ")) {
-            m_snapshot.locationDetail = QString("Location lookup failed for %1.").arg(ipAddress);
-        }
-        m_snapshot.lastUpdated = QDateTime::currentDateTime();
-        emit diagnosticsUpdated(m_snapshot);
+void DiagnosticsService::resetConnectionSnapshot(const QString &reason) {
+    m_snapshot.publicIp.clear();
+    m_snapshot.publicIpDetail = reason;
+    m_snapshot.location.clear();
+    m_snapshot.locationDetail = reason;
+    m_snapshot.delayDnsMs = -1;
+    m_snapshot.delayConnectMs = -1;
+    m_snapshot.delayTlsMs = -1;
+    m_snapshot.delayTotalMs = -1;
+    m_snapshot.delayDetail = reason;
+    m_snapshot.dnsSummary = "Unavailable";
+    m_snapshot.dnsDetail = reason;
+    m_snapshot.externalDetail = reason;
+    emitSnapshotUpdate();
+}
+
+void DiagnosticsService::abortProbe(QPointer<QProcess> &process) {
+    if (!process) {
         return;
     }
 
-    auto *reply = m_network.get(QNetworkRequest(QUrl(urls.at(index))));
-    QTimer::singleShot(m_config.diagnostics.requestTimeoutMs, reply, [reply]() {
-        if (reply->isRunning()) {
-            reply->setProperty("timedOut", true);
-            reply->abort();
+    disconnect(process, nullptr, this, nullptr);
+    if (process->state() != QProcess::NotRunning) {
+        process->kill();
+        process->waitForFinished(100);
+    }
+    process->deleteLater();
+    process = nullptr;
+}
+
+void DiagnosticsService::startIpv4Probe(quint64 generation) {
+    abortProbe(m_ipv4Process);
+
+    auto *process = new QProcess(this);
+    process->setProgram(m_config.diagnostics.connection.ipv4.executable);
+    process->setArguments(m_config.diagnostics.connection.ipv4.args);
+    process->setProcessChannelMode(QProcess::SeparateChannels);
+    process->setProperty("generation", QVariant::fromValue<qulonglong>(generation));
+    m_ipv4Process = process;
+
+    QTimer::singleShot(m_config.diagnostics.requestTimeoutMs, process, [process]() {
+        if (process->state() != QProcess::NotRunning) {
+            process->setProperty("timedOut", true);
+            process->kill();
         }
     });
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, ipAddress, urls, index]() {
-        QString failureReason;
-        if (reply->property("timedOut").toBool()) {
-            failureReason = QString("timed out via %1").arg(QUrl(urls.at(index)).host());
-        } else if (reply->error() != QNetworkReply::NoError) {
-            failureReason = QString("%1 via %2").arg(reply->errorString(), QUrl(urls.at(index)).host());
-        } else {
-            const QByteArray body = reply->readAll();
-            if (!tryApplyLocationResponse(m_snapshot, ipAddress, body, &failureReason)) {
-                m_snapshot.location.clear();
-            }
-        }
-
-        const bool success = !m_snapshot.location.isEmpty();
-        if (!success && index + 1 < urls.size()) {
-            reply->deleteLater();
-            issueLocationLookupRequest(ipAddress, urls, index + 1);
+    connect(process, &QProcess::errorOccurred, this, [this, process, generation](QProcess::ProcessError error) {
+        if (generation != m_probeGeneration || error != QProcess::FailedToStart || process->property("handledError").toBool()) {
             return;
         }
-
-        if (!success) {
-            m_snapshot.locationDetail = QString("Location lookup failed for %1: %2").arg(ipAddress, failureReason);
+        process->setProperty("handledError", true);
+        const QString failure = QString("Public IP probe failed to start: %1").arg(process->errorString());
+        m_snapshot.publicIpDetail = failure;
+        m_snapshot.externalDetail = failure;
+        if (m_snapshot.publicIp.isEmpty()) {
+            m_snapshot.location.clear();
+            m_snapshot.locationDetail = "Waiting for a usable public IP before resolving location.";
         }
-        m_snapshot.lastUpdated = QDateTime::currentDateTime();
-        emit diagnosticsUpdated(m_snapshot);
-        reply->deleteLater();
+        emitSnapshotUpdate();
+        process->deleteLater();
     });
+
+    connect(process,
+            qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+            this,
+            [this, process, generation](int, QProcess::ExitStatus) {
+                const QByteArray stdOut = process->readAllStandardOutput();
+                const QByteArray stdErr = process->readAllStandardError();
+                if (process->property("handledError").toBool()) {
+                    process->deleteLater();
+                    return;
+                }
+                if (generation != m_probeGeneration) {
+                    process->deleteLater();
+                    return;
+                }
+
+                const QString failure = describeProcessFailure(
+                    "Public IP probe", process, stdErr, m_config.diagnostics.requestTimeoutMs);
+                if (process->exitCode() == 0 && process->exitStatus() == QProcess::NormalExit &&
+                    !process->property("timedOut").toBool()) {
+                    QString parseFailure;
+                    const QString ip = parsePublicIpOutput(stdOut, &parseFailure);
+                    if (!ip.isEmpty()) {
+                        m_snapshot.publicIp = ip;
+                        m_snapshot.publicIpDetail = QString("Resolved via %1").arg(commandName(m_config.diagnostics.connection.ipv4));
+                        m_snapshot.externalDetail = QString("Public IP updated: %1").arg(ip);
+                        updateLocationFromPublicIp();
+                        emitSnapshotUpdate();
+                        process->deleteLater();
+                        return;
+                    }
+                    m_snapshot.publicIpDetail = QString("Public IP parse failed: %1").arg(parseFailure);
+                    m_snapshot.externalDetail = m_snapshot.publicIpDetail;
+                    if (m_snapshot.publicIp.isEmpty()) {
+                        m_snapshot.location.clear();
+                        m_snapshot.locationDetail = "Waiting for a usable public IP before resolving location.";
+                    }
+                } else {
+                    m_snapshot.publicIpDetail = failure;
+                    m_snapshot.externalDetail = failure;
+                    if (m_snapshot.publicIp.isEmpty()) {
+                        m_snapshot.location.clear();
+                        m_snapshot.locationDetail = "Waiting for a usable public IP before resolving location.";
+                    }
+                }
+
+                emitSnapshotUpdate();
+                process->deleteLater();
+            });
+
+    process->start();
+}
+
+void DiagnosticsService::startTimingProbe(quint64 generation) {
+    abortProbe(m_timingProcess);
+
+    auto *process = new QProcess(this);
+    process->setProgram(m_config.diagnostics.connection.timing.executable);
+    process->setArguments(m_config.diagnostics.connection.timing.args);
+    process->setProcessChannelMode(QProcess::SeparateChannels);
+    process->setProperty("generation", QVariant::fromValue<qulonglong>(generation));
+    m_timingProcess = process;
+
+    QTimer::singleShot(m_config.diagnostics.requestTimeoutMs, process, [process]() {
+        if (process->state() != QProcess::NotRunning) {
+            process->setProperty("timedOut", true);
+            process->kill();
+        }
+    });
+
+    connect(process, &QProcess::errorOccurred, this, [this, process, generation](QProcess::ProcessError error) {
+        if (generation != m_probeGeneration || error != QProcess::FailedToStart || process->property("handledError").toBool()) {
+            return;
+        }
+        process->setProperty("handledError", true);
+        const QString failure = QString("Delay probe failed to start: %1").arg(process->errorString());
+        m_snapshot.delayDetail = failure;
+        m_snapshot.externalDetail = failure;
+        emitSnapshotUpdate();
+        process->deleteLater();
+    });
+
+    connect(process,
+            qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+            this,
+            [this, process, generation](int, QProcess::ExitStatus) {
+                const QByteArray stdOut = process->readAllStandardOutput();
+                const QByteArray stdErr = process->readAllStandardError();
+                if (process->property("handledError").toBool()) {
+                    process->deleteLater();
+                    return;
+                }
+                if (generation != m_probeGeneration) {
+                    process->deleteLater();
+                    return;
+                }
+
+                if (process->exitCode() == 0 && process->exitStatus() == QProcess::NormalExit &&
+                    !process->property("timedOut").toBool()) {
+                    QString parseFailure;
+                    const ParsedTimingResult parsed = parseTimingOutput(stdOut, &parseFailure);
+                    if (parsed.ok) {
+                        m_snapshot.delayDnsMs = parsed.dnsMs;
+                        m_snapshot.delayConnectMs = parsed.connectMs;
+                        m_snapshot.delayTlsMs = parsed.tlsMs;
+                        m_snapshot.delayTotalMs = parsed.totalMs;
+                        m_snapshot.delayDetail = timingBreakdown(m_snapshot);
+                        m_snapshot.externalDetail = QString("Delay updated: %1 ms").arg(parsed.totalMs);
+                        emitSnapshotUpdate();
+                        process->deleteLater();
+                        return;
+                    }
+                    m_snapshot.delayDetail = QString("Delay parse failed: %1").arg(parseFailure);
+                    m_snapshot.externalDetail = m_snapshot.delayDetail;
+                } else {
+                    const QString failure = describeProcessFailure(
+                        "Delay probe", process, stdErr, m_config.diagnostics.requestTimeoutMs);
+                    m_snapshot.delayDetail = failure;
+                    m_snapshot.externalDetail = failure;
+                }
+
+                emitSnapshotUpdate();
+                process->deleteLater();
+            });
+
+    process->start();
+}
+
+void DiagnosticsService::startDnsProbe(quint64 generation) {
+    abortProbe(m_dnsProcess);
+
+    auto *process = new QProcess(this);
+    process->setProgram(m_config.diagnostics.connection.dns.executable);
+    process->setArguments(m_config.diagnostics.connection.dns.args);
+    process->setProcessChannelMode(QProcess::SeparateChannels);
+    process->setProperty("generation", QVariant::fromValue<qulonglong>(generation));
+    m_dnsProcess = process;
+
+    QTimer::singleShot(m_config.diagnostics.requestTimeoutMs, process, [process]() {
+        if (process->state() != QProcess::NotRunning) {
+            process->setProperty("timedOut", true);
+            process->kill();
+        }
+    });
+
+    connect(process, &QProcess::errorOccurred, this, [this, process, generation](QProcess::ProcessError error) {
+        if (generation != m_probeGeneration || error != QProcess::FailedToStart || process->property("handledError").toBool()) {
+            return;
+        }
+        process->setProperty("handledError", true);
+        const QString failure = QString("DNS probe failed to start: %1").arg(process->errorString());
+        m_snapshot.dnsDetail = failure;
+        m_snapshot.externalDetail = failure;
+        emitSnapshotUpdate();
+        process->deleteLater();
+    });
+
+    connect(process,
+            qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+            this,
+            [this, process, generation](int, QProcess::ExitStatus) {
+                const QByteArray stdOut = process->readAllStandardOutput();
+                const QByteArray stdErr = process->readAllStandardError();
+                if (process->property("handledError").toBool()) {
+                    process->deleteLater();
+                    return;
+                }
+                if (generation != m_probeGeneration) {
+                    process->deleteLater();
+                    return;
+                }
+
+                if (process->exitCode() == 0 && process->exitStatus() == QProcess::NormalExit &&
+                    !process->property("timedOut").toBool()) {
+                    QString parseFailure;
+                    const QString dnsSummary = parseDnsOutput(stdOut, &parseFailure);
+                    if (!dnsSummary.isEmpty()) {
+                        m_snapshot.dnsSummary = dnsSummary;
+                        m_snapshot.dnsDetail = QString("Resolved via %1").arg(commandName(m_config.diagnostics.connection.dns));
+                        m_snapshot.externalDetail = "DNS updated";
+                        emitSnapshotUpdate();
+                        process->deleteLater();
+                        return;
+                    }
+                    m_snapshot.dnsDetail = QString("DNS parse failed: %1").arg(parseFailure);
+                    m_snapshot.externalDetail = m_snapshot.dnsDetail;
+                } else {
+                    const QString failure = describeProcessFailure(
+                        "DNS probe", process, stdErr, m_config.diagnostics.requestTimeoutMs);
+                    m_snapshot.dnsDetail = failure;
+                    m_snapshot.externalDetail = failure;
+                }
+
+                emitSnapshotUpdate();
+                process->deleteLater();
+            });
+
+    process->start();
+}
+
+void DiagnosticsService::updateLocationFromPublicIp() {
+    if (!m_config.diagnostics.connection.location.enabled) {
+        m_snapshot.location.clear();
+        m_snapshot.locationDetail = "Location lookup disabled in config.";
+        return;
+    }
+
+    if (!isUsableIpAddress(m_snapshot.publicIp)) {
+        m_snapshot.location.clear();
+        m_snapshot.locationDetail = "Waiting for a usable public IP before resolving location.";
+        return;
+    }
+
+    const QString dbPath = m_config.diagnostics.connection.location.databasePath;
+    QFileInfo dbInfo(dbPath);
+    if (!dbInfo.exists() || !dbInfo.isFile()) {
+        m_snapshot.location.clear();
+        m_snapshot.locationDetail = locationLookupError(m_snapshot.publicIp, QString("Geo DB not found at %1").arg(dbPath));
+        return;
+    }
+
+    MMDB_s mmdb;
+    const QByteArray dbPathBytes = dbPath.toUtf8();
+    const int openStatus = MMDB_open(dbPathBytes.constData(), MMDB_MODE_MMAP, &mmdb);
+    if (openStatus != MMDB_SUCCESS) {
+        m_snapshot.location.clear();
+        m_snapshot.locationDetail = locationLookupError(
+            m_snapshot.publicIp,
+            QString("failed to open %1").arg(QString::fromUtf8(MMDB_strerror(openStatus))));
+        return;
+    }
+
+    const QByteArray ipBytes = m_snapshot.publicIp.toUtf8();
+    int gaiError = 0;
+    int mmdbError = 0;
+    const MMDB_lookup_result_s lookup = MMDB_lookup_string(&mmdb, ipBytes.constData(), &gaiError, &mmdbError);
+    if (gaiError != 0) {
+        m_snapshot.location.clear();
+        m_snapshot.locationDetail = locationLookupError(m_snapshot.publicIp, QString("gai error %1").arg(gaiError));
+        MMDB_close(&mmdb);
+        return;
+    }
+    if (mmdbError != MMDB_SUCCESS) {
+        m_snapshot.location.clear();
+        m_snapshot.locationDetail = locationLookupError(
+            m_snapshot.publicIp,
+            QString::fromUtf8(MMDB_strerror(mmdbError)));
+        MMDB_close(&mmdb);
+        return;
+    }
+    if (!lookup.found_entry) {
+        m_snapshot.location.clear();
+        m_snapshot.locationDetail = locationLookupError(m_snapshot.publicIp, "address not found in Geo DB");
+        MMDB_close(&mmdb);
+        return;
+    }
+
+    QStringList parts;
+    const QString city = lookupMmdbString(&lookup.entry, "city", "names", "en");
+    const QString region = lookupMmdbString(&lookup.entry, "subdivisions", "0", "names", "en");
+    const QString country = lookupMmdbString(&lookup.entry, "country", "names", "en");
+    if (!city.isEmpty()) {
+        parts.push_back(city);
+    }
+    if (!region.isEmpty() && region != city) {
+        parts.push_back(region);
+    }
+    if (!country.isEmpty()) {
+        parts.push_back(country);
+    }
+
+    m_snapshot.location = parts.isEmpty() ? "Unknown location" : parts.join(", ");
+    m_snapshot.locationDetail = QString("Lookup IP: %1 · Geo DB: %2").arg(m_snapshot.publicIp, dbPath);
+    MMDB_close(&mmdb);
+}
+
+void DiagnosticsService::emitSnapshotUpdate() {
+    m_snapshot.lastUpdated = QDateTime::currentDateTime();
+    emit diagnosticsUpdated(m_snapshot);
 }
 
 }  // namespace tunlet::diagnostics

@@ -2,6 +2,7 @@
 
 #include "app/application_paths.hpp"
 
+#include <QDir>
 #include <QFileInfo>
 
 #include <yaml-cpp/yaml.h>
@@ -29,6 +30,28 @@ bool readBool(const YAML::Node &node, const char *key, bool defaultValue) {
 int readInt(const YAML::Node &node, const char *key, int defaultValue) {
     const YAML::Node value = node[key];
     return value ? value.as<int>() : defaultValue;
+}
+
+QStringList readStringList(const YAML::Node &node, const char *key, const QString &context) {
+    const YAML::Node value = node[key];
+    if (!value) {
+        return {};
+    }
+    if (!value.IsSequence()) {
+        throw std::runtime_error(QString("%1: '%2' must be a sequence").arg(context, key).toStdString());
+    }
+
+    QStringList items;
+    int index = 0;
+    for (const auto &item : value) {
+        if (!item.IsScalar()) {
+            throw std::runtime_error(
+                QString("%1: '%2[%3]' must be a scalar").arg(context, key).arg(index).toStdString());
+        }
+        items.push_back(QString::fromStdString(item.as<std::string>()));
+        ++index;
+    }
+    return items;
 }
 
 quint16 requirePort(const YAML::Node &node, const char *key, const QString &context) {
@@ -86,6 +109,76 @@ QVector<ClashModeProfile> defaultProfiles() {
     };
 }
 
+config::DiagnosticsCommandConfig defaultIpv4Command() {
+    return {
+        "curl",
+        {"-4", "-sS", "--noproxy", "*", "https://api.ipify.org"},
+    };
+}
+
+config::DiagnosticsCommandConfig defaultTimingCommand() {
+    return {
+        "curl",
+        {
+            "-4",
+            "-sS",
+            "--noproxy",
+            "*",
+            "-o",
+            "/dev/null",
+            "-w",
+            "dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s total=%{time_total}s\n",
+            "https://www.gstatic.com/generate_204",
+        },
+    };
+}
+
+config::DiagnosticsCommandConfig defaultDnsCommand() {
+    return {
+        "dig",
+        {"-4", "+short", "TXT", "o-o.myaddr.l.google.com"},
+    };
+}
+
+QString defaultGeoDbPath(const QString &sourcePath) {
+    QString configPath = sourcePath;
+    if (configPath.trimmed().isEmpty()) {
+        configPath = tunlet::app::defaultConfigPath();
+    }
+
+    const QFileInfo configInfo(tunlet::app::expandUserPath(configPath));
+    const QString configDir = configInfo.dir().absolutePath();
+    if (configDir.isEmpty()) {
+        return QDir::homePath() + "/.config/tunlet/GeoLite2-City.mmdb";
+    }
+    return QDir(configDir).filePath("GeoLite2-City.mmdb");
+}
+
+config::DiagnosticsCommandConfig parseDiagnosticsCommand(const YAML::Node &node,
+                                                        const QString &context,
+                                                        const config::DiagnosticsCommandConfig &defaults) {
+    if (!node) {
+        return defaults;
+    }
+    if (!node.IsMap()) {
+        throw std::runtime_error(QString("%1: expected a map").arg(context).toStdString());
+    }
+
+    config::DiagnosticsCommandConfig command = defaults;
+    if (node["executable"]) {
+        command.executable = QString::fromStdString(node["executable"].as<std::string>());
+    }
+    if (node["args"]) {
+        command.args = readStringList(node, "args", context);
+    }
+
+    if (command.executable.trimmed().isEmpty()) {
+        throw std::runtime_error(QString("%1.executable must not be empty").arg(context).toStdString());
+    }
+
+    return command;
+}
+
 AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
     if (!root.IsMap()) {
         throw std::runtime_error("config root must be a map");
@@ -93,6 +186,11 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
 
     AppConfig config;
     config.configPath = sourcePath;
+    config.diagnostics.connection.ipv4 = defaultIpv4Command();
+    config.diagnostics.connection.timing = defaultTimingCommand();
+    config.diagnostics.connection.dns = defaultDnsCommand();
+    config.diagnostics.connection.location.enabled = true;
+    config.diagnostics.connection.location.databasePath = defaultGeoDbPath(sourcePath);
 
     const YAML::Node clashApi = root["clashApi"];
     if (!clashApi || !clashApi.IsMap()) {
@@ -152,15 +250,38 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
             throw std::runtime_error("diagnostics.requestTimeoutMs must be > 0");
         }
 
-        if (const YAML::Node externalIp = diagnostics["externalIp"]) {
-            config.diagnostics.externalIp.enabled = readBool(externalIp, "enabled", false);
-            config.diagnostics.externalIp.ipv4Url = externalIp["ipv4Url"] ? QString::fromStdString(externalIp["ipv4Url"].as<std::string>()) : QString{};
-            config.diagnostics.externalIp.ipv6Url = externalIp["ipv6Url"] ? QString::fromStdString(externalIp["ipv6Url"].as<std::string>()) : QString{};
-            config.diagnostics.externalIp.proxyUrl = externalIp["proxyUrl"] ? QString::fromStdString(externalIp["proxyUrl"].as<std::string>()) : QString{};
-            config.diagnostics.externalIp.locationUrlTemplate =
-                externalIp["locationUrlTemplate"]
-                    ? QString::fromStdString(externalIp["locationUrlTemplate"].as<std::string>())
-                    : config.diagnostics.externalIp.locationUrlTemplate;
+        if (diagnostics["externalIp"]) {
+            throw std::runtime_error("diagnostics.externalIp is no longer supported; use diagnostics.connection");
+        }
+
+        if (const YAML::Node connection = diagnostics["connection"]) {
+            if (!connection.IsMap()) {
+                throw std::runtime_error("diagnostics.connection must be a map");
+            }
+
+            config.diagnostics.connection.ipv4 = parseDiagnosticsCommand(
+                connection["ipv4"],
+                "diagnostics.connection.ipv4",
+                config.diagnostics.connection.ipv4);
+            config.diagnostics.connection.timing = parseDiagnosticsCommand(
+                connection["timing"],
+                "diagnostics.connection.timing",
+                config.diagnostics.connection.timing);
+            config.diagnostics.connection.dns = parseDiagnosticsCommand(
+                connection["dns"],
+                "diagnostics.connection.dns",
+                config.diagnostics.connection.dns);
+
+            if (const YAML::Node location = connection["location"]) {
+                if (!location.IsMap()) {
+                    throw std::runtime_error("diagnostics.connection.location must be a map");
+                }
+                config.diagnostics.connection.location.enabled = readBool(location, "enabled", true);
+                if (location["databasePath"]) {
+                    config.diagnostics.connection.location.databasePath =
+                        tunlet::app::expandUserPath(QString::fromStdString(location["databasePath"].as<std::string>()));
+                }
+            }
         }
     }
 

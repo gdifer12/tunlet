@@ -4,8 +4,9 @@
 #include "config/app_config.hpp"
 
 #include <QDateTime>
-#include <QNetworkAccessManager>
 #include <QObject>
+#include <QPointer>
+#include <QProcess>
 #include <QTimer>
 
 namespace tunlet::clash {
@@ -17,15 +18,22 @@ namespace tunlet::diagnostics {
 struct DiagnosticsSnapshot {
     bool apiReachable = false;
     QString apiDetail = "No diagnostics yet";
-    QString ipv4;
-    QString ipv6;
-    QString proxyIp;
+    QString publicIp;
+    QString publicIpDetail = "Public IP unavailable";
     QString location;
     QString locationDetail = "Location unavailable";
-    qint64 apiLatencyMs = -1;
+    qint64 delayDnsMs = -1;
+    qint64 delayConnectMs = -1;
+    qint64 delayTlsMs = -1;
+    qint64 delayTotalMs = -1;
+    QString delayDetail = "Delay unavailable";
+    QString dnsSummary = "DNS unavailable";
+    QString dnsDetail = "DNS lookup unavailable";
     bool trafficAvailable = false;
     QString trafficSummary = "Unavailable";
     QString trafficDetail = "Traffic metrics unavailable";
+    QString configurationSummary;
+    QString configurationDetail;
     QString externalDetail;
     QDateTime lastUpdated;
 };
@@ -47,19 +55,25 @@ signals:
 
 private:
     void handleTrafficResult(const clash::TrafficResult &result);
-    void issueOptionalExternalRequest(const QString &url, const char *fieldName);
-    void issueLocationLookup(const QString &ipAddress);
-    void issueLocationLookupRequest(const QString &ipAddress, const QStringList &urls, int index);
     void handleHealthResult(const clash::HealthCheckResult &result);
-    void updateExternalField(const QString &fieldName, const QString &value);
+    void updateConfigurationSnapshot();
+    void resetConnectionSnapshot(const QString &reason);
+    void abortProbe(QPointer<QProcess> &process);
+    void startIpv4Probe(quint64 generation);
+    void startTimingProbe(quint64 generation);
+    void startDnsProbe(quint64 generation);
+    void updateLocationFromPublicIp();
+    void emitSnapshotUpdate();
 
     config::AppConfig m_config;
     clash::ClashApiClient *m_client = nullptr;
-    QNetworkAccessManager m_network;
     QTimer m_timer;
     DiagnosticsSnapshot m_snapshot;
-    QString m_lastLocationLookupIp;
     QString m_lastObservedModeValue;
+    quint64 m_probeGeneration = 0;
+    QPointer<QProcess> m_ipv4Process;
+    QPointer<QProcess> m_timingProcess;
+    QPointer<QProcess> m_dnsProcess;
 };
 
 }  // namespace tunlet::diagnostics

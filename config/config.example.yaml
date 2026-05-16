@@ -20,12 +20,28 @@ diagnostics:
   enabled: true
   refreshIntervalMs: 10000
   requestTimeoutMs: 5000
-  externalIp:
-    enabled: false
-    ipv4Url: "https://api.ipify.org"
-    ipv6Url: "https://api64.ipify.org"
-    proxyUrl: "https://ifconfig.me/ip"
-    locationUrlTemplate: "https://ipapi.co/{ip}/json/"
+  connection:
+    ipv4:
+      executable: "curl"
+      args: ["-4", "-sS", "--noproxy", "*", "https://api.ipify.org"]
+    timing:
+      executable: "curl"
+      args:
+        - "-4"
+        - "-sS"
+        - "--noproxy"
+        - "*"
+        - "-o"
+        - "/dev/null"
+        - "-w"
+        - "dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s total=%{time_total}s\n"
+        - "https://www.gstatic.com/generate_204"
+    dns:
+      executable: "dig"
+      args: ["-4", "+short", "TXT", "o-o.myaddr.l.google.com"]
+    location:
+      enabled: true
+      databasePath: "~/.config/tunlet/GeoLite2-City.mmdb"
 
 theme:
   qssPath: ""

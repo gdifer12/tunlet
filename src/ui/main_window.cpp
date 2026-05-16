@@ -60,6 +60,11 @@ QString configRootForConfig(const config::AppConfig &config) {
     return compactPath(configInfo.dir().absolutePath());
 }
 
+QString commandName(const config::DiagnosticsCommandConfig &command) {
+    const QFileInfo info(command.executable);
+    return info.fileName().isEmpty() ? command.executable : info.fileName();
+}
+
 QString displayModeName(QString value) {
     value = value.trimmed();
     if (value.isEmpty()) {
@@ -77,6 +82,31 @@ QString joinOrUnknown(const QStringList &items) {
 
 QString lastRefreshLabel(const QDateTime &time) {
     return time.isValid() ? time.toString("HH:mm:ss") : QString("Waiting");
+}
+
+QString formatDelayValue(qint64 valueMs) {
+    return valueMs >= 0 ? QString("%1 ms").arg(valueMs) : QString("Unavailable");
+}
+
+QString buildDelayBreakdown(const diagnostics::DiagnosticsSnapshot &snapshot) {
+    QStringList parts;
+    if (snapshot.delayDnsMs >= 0) {
+        parts.push_back(QString("DNS %1 ms").arg(snapshot.delayDnsMs));
+    }
+    if (snapshot.delayConnectMs >= 0) {
+        parts.push_back(QString("Connect %1 ms").arg(snapshot.delayConnectMs));
+    }
+    if (snapshot.delayTlsMs >= 0) {
+        parts.push_back(QString("TLS %1 ms").arg(snapshot.delayTlsMs));
+    }
+    return parts.isEmpty() ? snapshot.delayDetail : parts.join(" · ");
+}
+
+QString compactProbeCommands(const config::AppConfig &config) {
+    return QString("IP %1 · Delay %2 · DNS %3")
+        .arg(commandName(config.diagnostics.connection.ipv4),
+             commandName(config.diagnostics.connection.timing),
+             commandName(config.diagnostics.connection.dns));
 }
 
 QWidget *buildMetricItem(QWidget *parent, const QString &labelText, QLabel **valueLabel) {
@@ -411,7 +441,7 @@ QWidget *MainWindow::buildHealthStrip() {
     grid->setHorizontalSpacing(6);
     grid->setVerticalSpacing(4);
 
-    const QStringList labels = {"Latency", "IP", "DNS", "Last reload"};
+    const QStringList labels = {"Delay", "IP", "DNS", "Last reload"};
     QLabel **targets[] = {
         &m_footerLatencyValue,
         &m_footerIpValue,
@@ -668,14 +698,14 @@ QWidget *MainWindow::buildDashboardPage() {
     metricGrid->setHorizontalSpacing(10);
     metricGrid->setVerticalSpacing(10);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Clash API", &m_connectionEndpointValue), 0, 0);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "TUN interface", &m_connectionTunValue), 0, 1);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "DNS mode", &m_connectionDnsValue), 1, 0);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Delay check", &m_connectionDiagnosticsValue), 1, 1);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Routing summary", &m_connectionRoutingValue), 2, 0);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Config root", &m_configRootValue), 2, 1);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Public IP", &m_connectionTunValue), 0, 1);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "DNS result", &m_connectionDnsValue), 1, 0);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Delay", &m_connectionDiagnosticsValue), 1, 1);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Location", &m_connectionRoutingValue), 2, 0);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Diagnostics config", &m_configRootValue), 2, 1);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Controller address", &m_controllerAddressValue), 3, 0);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Rules directory", &m_rulesDirectoryValue), 3, 1);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Profile hint", &m_profileHintValue), 4, 0, 1, 2);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Traffic", &m_profileHintValue), 4, 0, 1, 2);
     connectionLayout->addLayout(metricGrid);
     pageLayout->addWidget(connectionCard);
     pageLayout->addStretch(1);
@@ -906,9 +936,11 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     m_infoConfigPathValue = buildKeyValueRow(appInfoGrid, 1, "Config path", appInfoCard);
     m_infoRulesDirValue = buildKeyValueRow(appInfoGrid, 2, "Rules directory", appInfoCard);
     m_infoEndpointValue = buildKeyValueRow(appInfoGrid, 3, "API endpoint", appInfoCard);
-    m_infoDiagnosticsValue = buildKeyValueRow(appInfoGrid, 4, "Diagnostics", appInfoCard);
-    m_infoProfilesValue = buildKeyValueRow(appInfoGrid, 5, "Profiles", appInfoCard);
-    m_infoThemeValue = buildKeyValueRow(appInfoGrid, 6, "Theme source", appInfoCard);
+    m_infoDiagnosticsValue = buildKeyValueRow(appInfoGrid, 4, "Diagnostics cadence", appInfoCard);
+    m_infoProbeCommandsValue = buildKeyValueRow(appInfoGrid, 5, "Probe commands", appInfoCard);
+    m_infoGeoDbValue = buildKeyValueRow(appInfoGrid, 6, "Geo DB", appInfoCard);
+    m_infoProfilesValue = buildKeyValueRow(appInfoGrid, 7, "Profiles", appInfoCard);
+    m_infoThemeValue = buildKeyValueRow(appInfoGrid, 8, "Theme source", appInfoCard);
     appInfoLayout->addLayout(appInfoGrid);
     pageLayout->addWidget(appInfoCard);
 
@@ -931,7 +963,7 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     m_stateCurrentModeValue = buildKeyValueRow(stateGrid, 1, "Current mode", stateCard);
     m_stateLastRefreshValue = buildKeyValueRow(stateGrid, 2, "Last refresh", stateCard);
     m_stateLastDetailValue = buildKeyValueRow(stateGrid, 3, "Last detail", stateCard);
-    m_stateExternalIpValue = buildKeyValueRow(stateGrid, 4, "External IP", stateCard);
+    m_stateExternalIpValue = buildKeyValueRow(stateGrid, 4, "IP / Location", stateCard);
     m_stateTrafficValue = buildKeyValueRow(stateGrid, 5, "Traffic", stateCard);
     m_stateModeListValue = buildKeyValueRow(stateGrid, 6, "Supported modes", stateCard);
     stateLayout->addLayout(stateGrid);
@@ -1525,19 +1557,27 @@ void MainWindow::updateDashboardCards() {
     const QString detailText = m_lastStatus.detail.isEmpty() ? "Waiting for first refresh." : m_lastStatus.detail;
     const QDateTime lastRefresh = m_lastDiagnostics.lastUpdated.isValid() ? m_lastDiagnostics.lastUpdated : m_lastStatus.lastUpdated;
     const QString refreshText = lastRefreshLabel(lastRefresh);
-    const QString proxyIp = !m_lastDiagnostics.proxyIp.isEmpty() ? m_lastDiagnostics.proxyIp : !m_lastDiagnostics.ipv4.isEmpty() ? m_lastDiagnostics.ipv4 : "-";
+    const QString publicIp = m_lastDiagnostics.publicIp.isEmpty() ? "-" : m_lastDiagnostics.publicIp;
     const QString locationText = m_lastDiagnostics.location.isEmpty() ? "Location unavailable" : m_lastDiagnostics.location;
-    const QString latencyText = m_lastDiagnostics.apiLatencyMs >= 0 ? QString("%1 ms").arg(m_lastDiagnostics.apiLatencyMs) : QString("Unavailable");
-    const QString profileHint = m_profileDescriptionLabel ? m_profileDescriptionLabel->text().split('\n').first() : QString("No profile selected");
+    const QString delayText = formatDelayValue(m_lastDiagnostics.delayTotalMs);
     const QString trafficText =
         m_lastDiagnostics.trafficAvailable ? QString("%1\n%2").arg(m_lastDiagnostics.trafficSummary, m_lastDiagnostics.trafficDetail)
                                            : m_lastDiagnostics.trafficDetail;
     const QString diagnosticsText = m_config.diagnostics.enabled
-                                        ? QString("Enabled · every %1 s").arg(m_config.diagnostics.refreshIntervalMs / 1000.0, 0, 'f', 0)
+                                        ? QString("Every %1 s · timeout %2 ms")
+                                              .arg(m_config.diagnostics.refreshIntervalMs / 1000.0, 0, 'f', 0)
+                                              .arg(m_config.diagnostics.requestTimeoutMs)
                                         : QString("Disabled");
-    const QString dnsText = "Not exposed by diagnostics";
+    const QString dnsText = m_lastDiagnostics.dnsSummary;
     const QString connectionApiText = QString("%1 · %2").arg(apiSummary, endpoint);
-    const QString latencyDetailText = m_lastDiagnostics.apiDetail.isEmpty() ? "Last probe steady" : m_lastDiagnostics.apiDetail;
+    const QString delayDetailText = buildDelayBreakdown(m_lastDiagnostics);
+    const QString diagnosticsConfigText = m_lastDiagnostics.configurationSummary.isEmpty()
+                                              ? compactProbeCommands(m_config)
+                                              : m_lastDiagnostics.configurationSummary;
+    const QString lastDetailText = !m_lastDiagnostics.externalDetail.trimmed().isEmpty() &&
+                                           m_lastDiagnostics.externalDetail != "Refreshing connection diagnostics"
+                                       ? m_lastDiagnostics.externalDetail
+                                       : detailText;
 
     setStatusPill(m_headerReachabilityLabel, apiSummary, tone);
     setStatusPill(m_topRuntimeStatusLabel, busy ? "Syncing" : reachable ? "Running" : "Offline", tone);
@@ -1574,23 +1614,23 @@ void MainWindow::updateDashboardCards() {
         m_lastReloadValue->setText(refreshText);
     }
     if (m_lastReloadDetail) {
-        m_lastReloadDetail->setText(reachable ? "No recent reload error" : detailText);
+        m_lastReloadDetail->setText(reachable ? "Last combined diagnostics refresh" : detailText);
     }
 
     if (m_connectionEndpointValue) {
         m_connectionEndpointValue->setText(connectionApiText);
     }
     if (m_connectionDiagnosticsValue) {
-        m_connectionDiagnosticsValue->setText(QString("%1 · %2").arg(latencyText, latencyDetailText));
+        m_connectionDiagnosticsValue->setText(QString("%1 · %2").arg(delayText, delayDetailText));
     }
     if (m_connectionTunValue) {
-        m_connectionTunValue->setText("Unavailable in current build");
+        m_connectionTunValue->setText(publicIp == "-" ? "Unavailable" : publicIp);
     }
     if (m_connectionDnsValue) {
         m_connectionDnsValue->setText(dnsText);
     }
     if (m_connectionRoutingValue) {
-        m_connectionRoutingValue->setText(QString("Auto split · %1 local rule files active").arg(m_ruleFiles.size()));
+        m_connectionRoutingValue->setText(locationText);
     }
     if (m_controllerAddressValue) {
         m_controllerAddressValue->setText(endpoint);
@@ -1600,10 +1640,10 @@ void MainWindow::updateDashboardCards() {
         m_rulesDirectoryValue->setText(rulesDirectoryForConfig(m_config));
     }
     if (m_configRootValue) {
-        m_configRootValue->setText(configRootForConfig(m_config));
+        m_configRootValue->setText(QString("%1\n%2").arg(diagnosticsConfigText, m_lastDiagnostics.configurationDetail));
     }
     if (m_profileHintValue) {
-        m_profileHintValue->setText(profileHint);
+        m_profileHintValue->setText(trafficText);
     }
     if (m_appBuildValue) {
         const QString appValue = QCoreApplication::applicationVersion().isEmpty()
@@ -1623,6 +1663,12 @@ void MainWindow::updateDashboardCards() {
     if (m_infoDiagnosticsValue) {
         m_infoDiagnosticsValue->setText(diagnosticsText);
     }
+    if (m_infoProbeCommandsValue) {
+        m_infoProbeCommandsValue->setText(diagnosticsConfigText);
+    }
+    if (m_infoGeoDbValue) {
+        m_infoGeoDbValue->setText(compactPath(m_config.diagnostics.connection.location.databasePath));
+    }
     if (m_infoProfilesValue) {
         m_infoProfilesValue->setText(QString("%1 available").arg(m_modeController->profiles().size()));
     }
@@ -1640,10 +1686,10 @@ void MainWindow::updateDashboardCards() {
         m_stateLastRefreshValue->setText(refreshText);
     }
     if (m_stateLastDetailValue) {
-        m_stateLastDetailValue->setText(detailText);
+        m_stateLastDetailValue->setText(lastDetailText);
     }
     if (m_stateExternalIpValue) {
-        m_stateExternalIpValue->setText(proxyIp == "-" ? "Unavailable" : QString("%1 · %2").arg(proxyIp, locationText));
+        m_stateExternalIpValue->setText(publicIp == "-" ? "Unavailable" : QString("%1 · %2").arg(publicIp, locationText));
     }
     if (m_stateTrafficValue) {
         m_stateTrafficValue->setText(trafficText);
@@ -1653,13 +1699,13 @@ void MainWindow::updateDashboardCards() {
     }
 
     if (m_footerLatencyValue) {
-        m_footerLatencyValue->setText(latencyText);
+        m_footerLatencyValue->setText(delayText);
     }
     if (m_footerIpValue) {
-        m_footerIpValue->setText(proxyIp);
+        m_footerIpValue->setText(publicIp);
     }
     if (m_footerDnsValue) {
-        m_footerDnsValue->setText("Unavailable");
+        m_footerDnsValue->setText(dnsText);
     }
     if (m_footerReloadValue) {
         m_footerReloadValue->setText(refreshText);

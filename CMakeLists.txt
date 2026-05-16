@@ -15,6 +15,8 @@ include(CTest)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Svg)
 find_package(yaml-cpp REQUIRED)
+find_library(MAXMINDDB_LIBRARY NAMES maxminddb REQUIRED)
+find_path(MAXMINDDB_INCLUDE_DIR NAMES maxminddb.h REQUIRED)
 
 qt_standard_project_setup()
 
@@ -25,6 +27,7 @@ set(TUNLET_SOURCES
     src/config/config_file_service.cpp
     src/clash/clash_api_client.cpp
     src/clash/mode_controller.cpp
+    src/diagnostics/diagnostics_parsing.cpp
     src/rules/ruleset_service.cpp
     src/diagnostics/diagnostics_service.cpp
     src/theme/theme_loader.cpp
@@ -35,6 +38,7 @@ set(TUNLET_SOURCES
 
 add_library(tunlet_core STATIC ${TUNLET_SOURCES})
 target_include_directories(tunlet_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(tunlet_core PRIVATE ${MAXMINDDB_INCLUDE_DIR})
 target_link_libraries(
     tunlet_core
     PUBLIC
@@ -43,6 +47,7 @@ target_link_libraries(
         Qt6::Network
         Qt6::Svg
         yaml-cpp
+        ${MAXMINDDB_LIBRARY}
 )
 
 qt_add_executable(tunlet src/app/main.cpp)
@@ -63,6 +68,7 @@ if(BUILD_TESTING)
     add_executable(tunlet_tests
         tests/clash_api_client_tests.cpp
         tests/config_loader_tests.cpp
+        tests/diagnostics_parsing_tests.cpp
         tests/logical_mode_tests.cpp
         tests/ruleset_service_tests.cpp
     )

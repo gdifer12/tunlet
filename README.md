@@ -11,7 +11,7 @@ It is intentionally not a VPN manager, service manager, config generator, or net
 - Tray menu for quick switching and status refresh
 - Compact main window for control, diagnostics, and JSON rule-set editing
 - JSON validation and safe-save with optional backups
-- Optional external IP diagnostics, disabled by default
+- Optional command-driven connection diagnostics for IP, delay, DNS, and GeoLite2 location
 - Optional custom QSS theme file
 - Nix flake with `devShell` and package build
 
@@ -66,6 +66,13 @@ Top-level keys:
 - `theme`
 - `editing`
 
+`diagnostics.connection` configures the three external probes and the local GeoLite2 database:
+
+- `ipv4`: command used to resolve public IPv4
+- `timing`: command used to resolve DNS/connect/TLS/total delay
+- `dns`: command used to resolve DNS TXT diagnostics
+- `location.databasePath`: local `GeoLite2-City.mmdb` path used to map the resolved IP to a location
+
 `clashApi.profiles` adds extra named mode mappings on top of the built-in default profiles:
 
 - `direct -> direct`
@@ -99,7 +106,7 @@ This avoids hardcoding the complete list of supported mode values in the UI.
 - `src/clash`: Clash API client and mode controller
 - `src/rules`: JSON file handling
 - `src/config/config_file_service.*`: UI-safe YAML config editing
-- `src/diagnostics`: periodic health and optional external IP lookups
+- `src/diagnostics`: periodic health plus command-driven connection probes
 - `src/ui`: Qt Widgets main window and tray
 - `src/theme`: optional QSS loading
 - `tests`: unit tests
