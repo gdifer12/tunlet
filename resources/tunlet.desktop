@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=tunlet
+Comment=Control sing-box Clash API modes and edit rule-set files
+Exec=tunlet
+Icon=tunlet
+Categories=Network;Utility;
+Terminal=false

@@ -1,0 +1,35 @@
+clashApi:
+  host: "127.0.0.1"
+  port: 21090
+  profiles:
+    - name: "work"
+      mode: "work"
+      desc: "Optional extra Clash mode profile"
+
+ruleSets:
+  forceProxyPath: "/home/user/.config/sing-box/rules/force-proxy.json"
+  forceDirectPath: "/home/user/.config/sing-box/rules/force-direct.json"
+  autoProxyPath: "/home/user/.config/sing-box/rules/auto-proxy.json"
+  autoDirectPath: "/home/user/.config/sing-box/rules/auto-direct.json"
+  extraFiles:
+    - name: "custom-bypass"
+      path: "/home/user/.config/sing-box/rules/custom-bypass.json"
+      description: "Optional extra editable rule-set"
+
+diagnostics:
+  enabled: true
+  refreshIntervalMs: 10000
+  requestTimeoutMs: 5000
+  externalIp:
+    enabled: false
+    ipv4Url: "https://api.ipify.org"
+    ipv6Url: "https://api64.ipify.org"
+    proxyUrl: "https://ifconfig.me/ip"
+    locationUrlTemplate: "https://ipapi.co/{ip}/json/"
+
+theme:
+  qssPath: ""
+
+editing:
+  createBackup: true
+  backupSuffix: ".bak"

@@ -1,0 +1,435 @@
+QWidget {
+    background: transparent;
+    color: #eef4fb;
+    font-family: "Inter", "Noto Sans", "Segoe UI", sans-serif;
+    font-size: 14px;
+}
+
+QLabel {
+    background: transparent;
+}
+
+QMainWindow,
+QWidget#appRoot {
+    background: qradialgradient(cx: 1.05, cy: 0.0, radius: 0.9,
+                                fx: 1.05, fy: 0.0,
+                                stop: 0 rgba(46, 111, 235, 45),
+                                stop: 0.38 rgba(46, 111, 235, 0),
+                                stop: 1 rgba(0, 0, 0, 0));
+}
+
+QWidget#windowFrame {
+    background: #11161f;
+    border: 1px solid #242d39;
+    border-radius: 24px;
+}
+
+QWidget#windowTitleBar {
+    background: #161c26;
+    border-bottom: 1px solid #242d39;
+    border-top-left-radius: 24px;
+    border-top-right-radius: 24px;
+}
+
+QLabel#titleBarTitle,
+QLabel#sidebarTitle,
+QLabel#panelTitle,
+QLabel#heroMode,
+QLabel#cardTitleStrong,
+QLabel#summaryValue,
+QLabel#healthValue {
+    color: #f7fbff;
+}
+
+QLabel#titleBarTitle {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+QLabel#sidebarTitle {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+QLabel#panelTitle {
+    font-size: 28px;
+    font-weight: 700;
+}
+
+QLabel#heroMode {
+    font-size: 30px;
+    font-weight: 700;
+}
+
+QLabel#cardTitleStrong {
+    font-size: 17px;
+    font-weight: 600;
+}
+
+QLabel#panelSubtitle,
+QLabel#cardSubtitle,
+QLabel#summarySub,
+QLabel#monoNote,
+QLabel#bannerMessage,
+QLabel#kvValue,
+QLabel#metricValue {
+    color: #98a7b8;
+}
+
+QLabel#panelSubtitle,
+QLabel#cardSubtitle {
+    line-height: 1.4;
+}
+
+QLabel#eyebrow,
+QLabel#summaryKey,
+QLabel#metricLabel,
+QLabel#metaLabel,
+QLabel#kvKey {
+    color: #7f8c9b;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+QLabel#monoNote,
+QLabel#kvValue,
+QLabel#lineNumbers,
+QLabel#metaLabel {
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+
+QLabel#summaryValue {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+QLabel#titleDot {
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 18%);
+    min-width: 10px;
+    max-width: 10px;
+    min-height: 10px;
+    max-height: 10px;
+}
+
+QLabel#titleDot[tone="danger"] {
+    background: #b54848;
+}
+
+QLabel#titleDot[tone="warn"] {
+    background: #b58f48;
+}
+
+QLabel#titleDot[tone="ok"] {
+    background: #3e995b;
+}
+
+QWidget#windowBody {
+    background: transparent;
+    border-bottom-left-radius: 24px;
+    border-bottom-right-radius: 24px;
+}
+
+QWidget#sidebar {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #171d27,
+                                stop: 1 #121820);
+    border-right: 1px solid #242d39;
+    border-bottom-left-radius: 24px;
+}
+
+QWidget#contentShell,
+QStackedWidget#contentPages,
+QWidget#panelPage {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #121820,
+                                stop: 1 #161c25);
+}
+
+QWidget#sidebarCard,
+QWidget#card,
+QWidget#metricItem,
+QWidget#healthItem,
+QWidget#editorBanner,
+QWidget#editorFrame {
+    background: #1a212c;
+    border: 1px solid #283243;
+    border-radius: 18px;
+}
+
+QWidget#metricItem,
+QWidget#healthItem {
+    background: #171e28;
+    border-radius: 14px;
+}
+
+QPushButton {
+    background: #1d2430;
+    color: #eef4fb;
+    border: 1px solid #2e3b50;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-weight: 600;
+}
+
+QPushButton:hover {
+    background: #232c39;
+    border-color: #3c4f6b;
+}
+
+QPushButton:pressed {
+    background: #171e28;
+}
+
+QPushButton#primaryButton {
+    background: rgba(47, 111, 235, 0.22);
+    border: 1px solid rgba(93, 149, 255, 0.65);
+    color: #ffffff;
+}
+
+QPushButton#primaryButton:hover {
+    background: rgba(47, 111, 235, 0.3);
+}
+
+QPushButton#ghostButton {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+QPushButton#sidebarTabButton {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 16px;
+    color: #c7d1dc;
+    padding: 12px 14px;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QPushButton#sidebarTabButton:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: #2e3a4c;
+}
+
+QPushButton#sidebarTabButton[active="true"] {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 rgba(47, 111, 235, 0.18),
+                                stop: 1 rgba(255, 255, 255, 0.04));
+    border-color: rgba(93, 149, 255, 0.7);
+    color: #ffffff;
+}
+
+QLabel#statusPill,
+QLabel#metaChip {
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+QLabel#metaChip {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid #2a3341;
+    color: #9eabba;
+}
+
+QLabel#statusPill[tone="ok"] {
+    background: rgba(29, 163, 74, 0.16);
+    border: 1px solid rgba(53, 183, 97, 0.4);
+    color: #6fe39a;
+}
+
+QLabel#statusPill[tone="warn"] {
+    background: rgba(234, 179, 8, 0.16);
+    border: 1px solid rgba(234, 179, 8, 0.38);
+    color: #f2cd67;
+}
+
+QLabel#statusPill[tone="danger"] {
+    background: rgba(220, 38, 38, 0.15);
+    border: 1px solid rgba(220, 38, 38, 0.38);
+    color: #ff8c8c;
+}
+
+QLabel#statusPill[tone="neutral"],
+QLabel#statusPill {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid #313c4e;
+    color: #c5d2df;
+}
+
+QWidget#editorBanner[tone="ok"] {
+    background: rgba(29, 163, 74, 0.12);
+    border: 1px solid rgba(53, 183, 97, 0.32);
+}
+
+QWidget#editorBanner[tone="warn"] {
+    background: rgba(234, 179, 8, 0.12);
+    border: 1px solid rgba(234, 179, 8, 0.28);
+}
+
+QWidget#editorBanner[tone="danger"] {
+    background: rgba(220, 38, 38, 0.12);
+    border: 1px solid rgba(220, 38, 38, 0.3);
+}
+
+QWidget#editorBanner[tone="neutral"],
+QWidget#editorBanner {
+    background: #171e28;
+    border: 1px solid #283243;
+}
+
+QLabel#bannerTitle {
+    color: #f7fbff;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QComboBox,
+QPlainTextEdit,
+QListWidget {
+    background: #141a22;
+    color: #eef4fb;
+    border: 1px solid #2c3748;
+    border-radius: 14px;
+}
+
+QComboBox:hover,
+QPlainTextEdit:hover,
+QListWidget:hover {
+    border-color: #40526c;
+}
+
+QComboBox#modeProfileCombo {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 rgba(47, 111, 235, 0.12),
+                                stop: 1 rgba(255, 255, 255, 0.03));
+    border: 1px solid #395070;
+    border-radius: 16px;
+    padding: 12px 14px;
+    font-size: 15px;
+    font-weight: 700;
+    min-height: 24px;
+}
+
+QComboBox#modeProfileCombo:disabled {
+    color: #7f8b99;
+    border-color: #273242;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 28px;
+}
+
+QComboBox QAbstractItemView {
+    background: #161d27;
+    color: #eef4fb;
+    border: 1px solid #324056;
+    selection-background-color: rgba(47, 111, 235, 0.35);
+    selection-color: #ffffff;
+    outline: none;
+}
+
+QListWidget#ruleFileList {
+    padding: 4px;
+    outline: none;
+}
+
+QListWidget#ruleFileList::item {
+    background: #171e28;
+    border: 1px solid #283243;
+    border-radius: 16px;
+    padding: 12px;
+    margin: 5px 0;
+}
+
+QListWidget#ruleFileList::item:hover {
+    border-color: #3b4c64;
+}
+
+QListWidget#ruleFileList::item:selected {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 rgba(47, 111, 235, 0.18),
+                                stop: 1 rgba(255, 255, 255, 0.04));
+    border-color: rgba(93, 149, 255, 0.75);
+    color: #ffffff;
+}
+
+QWidget#editorFrame {
+    border-radius: 16px;
+}
+
+QLabel#lineNumbers {
+    min-width: 38px;
+    padding: 16px 10px 16px 12px;
+    background: #11161e;
+    color: #667384;
+    border-right: 1px solid #273242;
+}
+
+QPlainTextEdit#ruleEditor,
+QPlainTextEdit#settingsEditor {
+    border: none;
+    border-radius: 0;
+    padding: 14px 16px;
+    selection-background-color: rgba(47, 111, 235, 0.38);
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 13px;
+}
+
+QPlainTextEdit#settingsEditor {
+    border: 1px solid #2c3748;
+    border-radius: 16px;
+    min-height: 360px;
+}
+
+QLabel#kvValue {
+    font-size: 13px;
+}
+
+QScrollArea {
+    background: transparent;
+    border: none;
+}
+
+QWidget#healthStrip {
+    background: #151b24;
+    border-top: 1px solid #242d39;
+    border-bottom-left-radius: 24px;
+    border-bottom-right-radius: 24px;
+}
+
+QLabel#healthValue {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QStatusBar {
+    background: transparent;
+    border: none;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 12px;
+    margin: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background: #334257;
+    border-radius: 6px;
+    min-height: 28px;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+    border: none;
+}
