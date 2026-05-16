@@ -11,17 +11,13 @@ QLabel {
 
 QMainWindow,
 QWidget#appRoot {
-    background: qradialgradient(cx: 1.03, cy: 0.0, radius: 0.88,
-                                fx: 1.03, fy: 0.0,
-                                stop: 0 rgba(47, 111, 235, 42),
-                                stop: 0.34 rgba(47, 111, 235, 0),
-                                stop: 1 rgba(0, 0, 0, 0));
+    background: transparent;
 }
 
 QWidget#windowFrame {
-    background: #101419;
-    border: 1px solid #2a323d;
-    border-radius: 24px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
 }
 
 QWidget#windowTitleBar {
@@ -188,7 +184,7 @@ QLabel#selectorTriggerCaret {
 QLabel#recentActionValue {
     color: #c8d2dc;
     font-weight: 500;
-    font-size: 11px;
+    font-size: 12px;
 }
 
 QPushButton,
@@ -227,13 +223,13 @@ QPushButton#ghostButton {
 }
 
 QToolButton#navTabButton {
-    min-height: 44px;
-    padding: 5px 8px 4px 8px;
+    min-height: 40px;
+    padding: 5px 10px 5px 10px;
     border-radius: 14px;
     background: transparent;
     border: 1px solid transparent;
     color: #aab5c2;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
 }
 
@@ -415,7 +411,7 @@ QWidget#pageViewport {
 }
 
 QLabel#healthValue {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
 }
 

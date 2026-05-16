@@ -30,6 +30,7 @@
 #include <QTimer>
 #include <QTextDocument>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 #include <QWidget>
 
 namespace tunlet::ui {
@@ -180,6 +181,22 @@ void MainWindow::showAndRaise() {
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
+    if (m_settingsEditor && watched == m_settingsEditor->viewport() && event->type() == QEvent::Wheel) {
+        auto *wheelEvent = static_cast<QWheelEvent *>(event);
+        auto *scrollBar = m_settingsEditor->verticalScrollBar();
+        if (!scrollBar || scrollBar->maximum() <= scrollBar->minimum()) {
+            wheelEvent->accept();
+            return true;
+        }
+
+        const int deltaY = !wheelEvent->pixelDelta().isNull() ? wheelEvent->pixelDelta().y() : wheelEvent->angleDelta().y();
+        if ((deltaY > 0 && scrollBar->value() <= scrollBar->minimum()) ||
+            (deltaY < 0 && scrollBar->value() >= scrollBar->maximum())) {
+            wheelEvent->accept();
+            return true;
+        }
+    }
+
     if (m_selectorPopup &&
         (watched == m_selectorPopup || qobject_cast<QAbstractButton *>(watched) != nullptr) &&
         event->type() == QEvent::KeyPress) {
@@ -253,7 +270,7 @@ void MainWindow::buildUi(bool trayAvailable) {
     auto *root = new QWidget(this);
     root->setObjectName("appRoot");
     auto *rootLayout = new QVBoxLayout(root);
-    rootLayout->setContentsMargins(12, 12, 12, 12);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
 
     auto *windowFrame = new QWidget(root);
@@ -355,17 +372,17 @@ QWidget *MainWindow::buildTopRuntimeStrip() {
     auto *shell = new QWidget(this);
     shell->setObjectName("topRuntimeStrip");
     auto *layout = new QVBoxLayout(shell);
-    layout->setContentsMargins(16, 12, 16, 10);
+    layout->setContentsMargins(14, 8, 14, 6);
     layout->setSpacing(0);
 
     auto *runtimeRow = new QWidget(shell);
     runtimeRow->setObjectName("topRuntime");
     auto *runtimeLayout = new QHBoxLayout(runtimeRow);
-    runtimeLayout->setContentsMargins(14, 12, 14, 12);
-    runtimeLayout->setSpacing(12);
+    runtimeLayout->setContentsMargins(12, 9, 12, 9);
+    runtimeLayout->setSpacing(10);
 
     auto *runtimeCopy = new QVBoxLayout();
-    runtimeCopy->setSpacing(3);
+    runtimeCopy->setSpacing(2);
     auto *runtimeTitle = new QLabel("Primary action: switch Clash mode fast", runtimeRow);
     runtimeTitle->setObjectName("runtimeTitle");
     m_topRuntimeSummaryLabel = new QLabel(runtimeRow);
@@ -387,18 +404,17 @@ QWidget *MainWindow::buildHealthStrip() {
     strip->setObjectName("healthStrip");
 
     auto *layout = new QHBoxLayout(strip);
-    layout->setContentsMargins(12, 8, 12, 8);
+    layout->setContentsMargins(10, 5, 10, 5);
     layout->setSpacing(0);
 
     auto *grid = new QGridLayout();
     grid->setHorizontalSpacing(6);
-    grid->setVerticalSpacing(6);
+    grid->setVerticalSpacing(4);
 
-    const QStringList labels = {"Clash API", "Latency", "TUN", "DNS", "Last reload"};
+    const QStringList labels = {"Latency", "IP", "DNS", "Last reload"};
     QLabel **targets[] = {
-        &m_footerApiValue,
         &m_footerLatencyValue,
-        &m_footerTunValue,
+        &m_footerIpValue,
         &m_footerDnsValue,
         &m_footerReloadValue,
     };
@@ -407,8 +423,8 @@ QWidget *MainWindow::buildHealthStrip() {
         auto *item = new QWidget(strip);
         item->setObjectName("healthItem");
         auto *itemLayout = new QVBoxLayout(item);
-        itemLayout->setContentsMargins(12, 10, 12, 10);
-        itemLayout->setSpacing(4);
+        itemLayout->setContentsMargins(10, 7, 10, 7);
+        itemLayout->setSpacing(2);
         auto *meta = new QLabel(labels.at(index), item);
         meta->setObjectName("metaLabel");
         *targets[index] = new QLabel(item);
@@ -449,8 +465,8 @@ QWidget *MainWindow::buildBottomNav() {
         button->setProperty("active", false);
         button->setText(sections[index].title);
         button->setIcon(QIcon(sections[index].iconPath));
-        button->setIconSize(QSize(18, 18));
-        button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+        button->setIconSize(QSize(16, 16));
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         button->setAutoRaise(false);
         button->setCursor(Qt::PointingHandCursor);
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -973,6 +989,7 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     m_settingsEditor->setObjectName("settingsEditor");
     m_settingsEditor->setLineWrapMode(QPlainTextEdit::NoWrap);
     m_settingsEditor->setMinimumHeight(420);
+    m_settingsEditor->viewport()->installEventFilter(this);
     connect(m_settingsEditor, &QPlainTextEdit::textChanged, this, &MainWindow::onSettingsEditorTextChanged);
     connect(m_settingsEditor->verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
         closeSelectorPopup();
@@ -980,7 +997,8 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     editorLayout->addWidget(m_settingsEditor, 1);
     pageLayout->addWidget(editorCard);
     pageLayout->addStretch(1);
-    return wrapPageInScrollArea(page, "settingsPageScrollArea");
+    m_settingsPageScrollArea = wrapPageInScrollArea(page, "settingsPageScrollArea");
+    return m_settingsPageScrollArea;
 }
 
 QScrollArea *MainWindow::wrapPageInScrollArea(QWidget *content, const QString &objectName) {
@@ -1517,7 +1535,6 @@ void MainWindow::updateDashboardCards() {
     const QString diagnosticsText = m_config.diagnostics.enabled
                                         ? QString("Enabled · every %1 s").arg(m_config.diagnostics.refreshIntervalMs / 1000.0, 0, 'f', 0)
                                         : QString("Disabled");
-    const QString tunText = "Unavailable in current build";
     const QString dnsText = "Not exposed by diagnostics";
     const QString connectionApiText = QString("%1 · %2").arg(apiSummary, endpoint);
     const QString latencyDetailText = m_lastDiagnostics.apiDetail.isEmpty() ? "Last probe steady" : m_lastDiagnostics.apiDetail;
@@ -1567,7 +1584,7 @@ void MainWindow::updateDashboardCards() {
         m_connectionDiagnosticsValue->setText(QString("%1 · %2").arg(latencyText, latencyDetailText));
     }
     if (m_connectionTunValue) {
-        m_connectionTunValue->setText(tunText);
+        m_connectionTunValue->setText("Unavailable in current build");
     }
     if (m_connectionDnsValue) {
         m_connectionDnsValue->setText(dnsText);
@@ -1635,14 +1652,11 @@ void MainWindow::updateDashboardCards() {
         m_stateModeListValue->setText(joinOrUnknown(m_lastStatus.supportedModes));
     }
 
-    if (m_footerApiValue) {
-        m_footerApiValue->setText(apiSummary);
-    }
     if (m_footerLatencyValue) {
         m_footerLatencyValue->setText(latencyText);
     }
-    if (m_footerTunValue) {
-        m_footerTunValue->setText("Unavailable");
+    if (m_footerIpValue) {
+        m_footerIpValue->setText(proxyIp);
     }
     if (m_footerDnsValue) {
         m_footerDnsValue->setText("Unavailable");

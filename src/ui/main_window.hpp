@@ -180,10 +180,10 @@ private:
     QLabel *m_stateModeListValue = nullptr;
     QLabel *m_settingsStatusLabel = nullptr;
     QPlainTextEdit *m_settingsEditor = nullptr;
+    QScrollArea *m_settingsPageScrollArea = nullptr;
 
-    QLabel *m_footerApiValue = nullptr;
     QLabel *m_footerLatencyValue = nullptr;
-    QLabel *m_footerTunValue = nullptr;
+    QLabel *m_footerIpValue = nullptr;
     QLabel *m_footerDnsValue = nullptr;
     QLabel *m_footerReloadValue = nullptr;
     QLabel *m_recentActionLabel = nullptr;
