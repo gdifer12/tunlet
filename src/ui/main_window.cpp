@@ -488,7 +488,7 @@ QWidget *MainWindow::buildHealthStrip() {
     strip->setObjectName("healthStrip");
 
     auto *layout = new QHBoxLayout(strip);
-    layout->setContentsMargins(10, 5, 10, 5);
+    layout->setContentsMargins(10, 3, 10, 3);
     layout->setSpacing(0);
 
     auto *grid = new QGridLayout();
@@ -507,8 +507,8 @@ QWidget *MainWindow::buildHealthStrip() {
         auto *item = new QWidget(strip);
         item->setObjectName("healthItem");
         auto *itemLayout = new QVBoxLayout(item);
-        itemLayout->setContentsMargins(10, 7, 10, 7);
-        itemLayout->setSpacing(2);
+        itemLayout->setContentsMargins(10, 5, 10, 5);
+        itemLayout->setSpacing(1);
         auto *meta = new QLabel(labels.at(index), item);
         meta->setObjectName("metaLabel");
         *targets[index] = new QLabel(item);
@@ -583,7 +583,7 @@ QWidget *MainWindow::buildBottomStatusLine() {
     auto *line = new QWidget(this);
     line->setObjectName("bottomStatusLine");
     auto *layout = new QHBoxLayout(line);
-    layout->setContentsMargins(14, 4, 14, 5);
+    layout->setContentsMargins(14, 2, 14, 3);
     layout->setSpacing(6);
 
     auto *meta = new QLabel("Recent action", line);
@@ -631,8 +631,8 @@ QWidget *MainWindow::buildDashboardPage() {
     auto *selectorCard = new QWidget(page);
     selectorCard->setObjectName("card");
     auto *selectorLayout = new QVBoxLayout(selectorCard);
-    selectorLayout->setContentsMargins(18, 18, 18, 18);
-    selectorLayout->setSpacing(14);
+    selectorLayout->setContentsMargins(18, 16, 18, 16);
+    selectorLayout->setSpacing(10);
 
     auto *selectorHead = new QWidget(selectorCard);
     auto *selectorHeadLayout = new QHBoxLayout(selectorHead);
@@ -656,10 +656,10 @@ QWidget *MainWindow::buildDashboardPage() {
     m_modeTriggerButton = new QPushButton(selectorCard);
     m_modeTriggerButton->setObjectName("selectorTrigger");
     m_modeTriggerButton->setProperty("open", false);
-    m_modeTriggerButton->setMinimumHeight(78);
+    m_modeTriggerButton->setMinimumHeight(72);
     m_modeTriggerButton->setCursor(Qt::PointingHandCursor);
     auto *modeTriggerLayout = new QHBoxLayout(m_modeTriggerButton);
-    modeTriggerLayout->setContentsMargins(14, 12, 14, 12);
+    modeTriggerLayout->setContentsMargins(14, 10, 14, 10);
     modeTriggerLayout->setSpacing(12);
     auto *modeTriggerCopy = new QVBoxLayout();
     modeTriggerCopy->setSpacing(4);
@@ -684,7 +684,7 @@ QWidget *MainWindow::buildDashboardPage() {
 
     auto *modeSummaryGrid = new QGridLayout();
     modeSummaryGrid->setHorizontalSpacing(10);
-    modeSummaryGrid->setVerticalSpacing(10);
+    modeSummaryGrid->setVerticalSpacing(8);
     modeSummaryGrid->addWidget(buildSummaryItem(selectorCard, "Selected profile", &m_selectedProfileValue, &m_selectedProfileDetail), 0, 0);
     modeSummaryGrid->addWidget(buildSummaryItem(selectorCard, "Last reload", &m_lastReloadValue, &m_lastReloadDetail), 0, 1);
     selectorLayout->addLayout(modeSummaryGrid);
@@ -794,16 +794,10 @@ QWidget *MainWindow::buildRuleSetsPage() {
     headLayout->setSpacing(18);
 
     auto *headCopy = new QVBoxLayout();
-    headCopy->setSpacing(6);
+    headCopy->setSpacing(0);
     auto *title = new QLabel("Local rule files", panelHead);
     title->setObjectName("panelTitle");
-    auto *subtitle = new QLabel(
-        "Compact version: select the file first, then keep one active local JSON editor with validation before save.",
-        panelHead);
-    subtitle->setObjectName("panelSubtitle");
-    subtitle->setWordWrap(true);
     headCopy->addWidget(title);
-    headCopy->addWidget(subtitle);
     headLayout->addLayout(headCopy, 1);
 
     m_rulePageStatusLabel = new QLabel(panelHead);
@@ -851,28 +845,6 @@ QWidget *MainWindow::buildRuleSetsPage() {
     connect(m_ruleFileTriggerButton, &QPushButton::clicked, this, &MainWindow::openRuleFilePopup);
     selectorFieldLayout->addWidget(m_ruleFileTriggerButton);
     selectorLayout->addWidget(selectorField);
-
-    auto *fileMeta = new QWidget(selectorCard);
-    fileMeta->setObjectName("fileMetaCard");
-    auto *fileMetaLayout = new QGridLayout(fileMeta);
-    fileMetaLayout->setContentsMargins(12, 12, 12, 12);
-    fileMetaLayout->setHorizontalSpacing(10);
-    fileMetaLayout->setVerticalSpacing(8);
-    auto *descriptionKey = new QLabel("Description", fileMeta);
-    descriptionKey->setObjectName("metaLabel");
-    m_ruleFileDescriptionLabel = new QLabel(fileMeta);
-    m_ruleFileDescriptionLabel->setObjectName("metricValue");
-    m_ruleFileDescriptionLabel->setWordWrap(true);
-    auto *pathKey = new QLabel("Path", fileMeta);
-    pathKey->setObjectName("metaLabel");
-    m_ruleFilePathLabel = new QLabel(fileMeta);
-    m_ruleFilePathLabel->setObjectName("monoNote");
-    m_ruleFilePathLabel->setWordWrap(true);
-    fileMetaLayout->addWidget(descriptionKey, 0, 0, Qt::AlignTop);
-    fileMetaLayout->addWidget(m_ruleFileDescriptionLabel, 0, 1);
-    fileMetaLayout->addWidget(pathKey, 1, 0, Qt::AlignTop);
-    fileMetaLayout->addWidget(m_ruleFilePathLabel, 1, 1);
-    selectorLayout->addWidget(fileMeta);
     pageLayout->addWidget(selectorCard);
 
     auto *editorCard = new QWidget(page);
@@ -1167,6 +1139,7 @@ void MainWindow::populateModeProfiles() {
 
 void MainWindow::populateRuleFiles() {
     const QString currentPath = m_selectedRuleFilePath;
+    m_ruleFileStatuses.clear();
 
     m_ruleFiles = {
         {"force-proxy", m_config.ruleSets.forceProxyPath, "Default force-proxy rule-set"},
@@ -1460,10 +1433,7 @@ void MainWindow::openRuleFilePopup() {
     layout->setContentsMargins(8, 8, 8, 8);
     layout->setSpacing(6);
     layout->setSizeConstraint(QLayout::SetMinimumSize);
-
-    const bool currentDirty = m_editor && m_editor->toPlainText() != m_loadedRuleText;
-    const auto validation = (m_editor && currentDirty) ? m_ruleSetService->validateJson(m_editor->toPlainText())
-                                                       : rules::ValidationResult{true, QString(), QString()};
+    refreshRuleFileStatusCache();
 
     int activeIndex = 0;
     for (int index = 0; index < m_ruleFiles.size(); ++index) {
@@ -1499,20 +1469,12 @@ void MainWindow::openRuleFilePopup() {
 
         auto *badge = new QLabel(head);
         badge->setObjectName("statusPill");
-        QString badgeText = "Saved";
-        QString badgeTone = "neutral";
         if (ruleFile.path == m_selectedRuleFilePath) {
-            if (currentDirty) {
-                badgeText = validation.ok ? "Unsaved" : "Needs fix";
-                badgeTone = validation.ok ? "warn" : "danger";
-            } else {
-                badgeText = "Ready";
-                badgeTone = "ok";
-            }
             activeIndex = index;
         }
-        badge->setText(badgeText);
-        badge->setProperty("tone", badgeTone);
+        const RuleFileUiStatus status = statusForRuleFilePath(ruleFile.path);
+        badge->setText(status.text);
+        badge->setProperty("tone", status.tone);
         repolish(badge);
         headLayout->addWidget(badge, 0, Qt::AlignTop);
 
@@ -1583,6 +1545,49 @@ void MainWindow::positionSelectorPopup(QWidget *trigger) {
     m_selectorPopup->move(x, y);
 }
 
+MainWindow::RuleFileUiStatus MainWindow::ruleFileStatusForText(const QString &text, const QString &loadedText) const {
+    const auto validation = m_ruleSetService->validateJson(text);
+    if (!validation.ok) {
+        return {"Needs fix", "danger"};
+    }
+    if (text != loadedText) {
+        return {"Unsaved", "warn"};
+    }
+    return {"Saved", "neutral"};
+}
+
+MainWindow::RuleFileUiStatus MainWindow::evaluateRuleFileStatusOnDisk(const NamedRuleFile &file) const {
+    const auto result = m_ruleSetService->loadFile(file.path);
+    if (!result.ok) {
+        return {"Needs fix", "danger"};
+    }
+    return ruleFileStatusForText(result.text, result.text);
+}
+
+void MainWindow::refreshRuleFileStatusCache() {
+    m_ruleFileStatuses.clear();
+    for (const auto &ruleFile : m_ruleFiles) {
+        m_ruleFileStatuses.insert(ruleFile.path, evaluateRuleFileStatusOnDisk(ruleFile));
+    }
+    updateSelectedRuleFileStatus();
+}
+
+void MainWindow::updateSelectedRuleFileStatus() {
+    const auto *file = selectedRuleFile();
+    if (!file || !m_editor) {
+        return;
+    }
+    m_ruleFileStatuses.insert(file->path, ruleFileStatusForText(m_editor->toPlainText(), m_loadedRuleText));
+}
+
+MainWindow::RuleFileUiStatus MainWindow::statusForRuleFilePath(const QString &path) const {
+    const auto it = m_ruleFileStatuses.constFind(path);
+    if (it != m_ruleFileStatuses.cend()) {
+        return it.value();
+    }
+    return {"Saved", "neutral"};
+}
+
 void MainWindow::updateRuleFileTrigger() {
     const auto *file = selectedRuleFile();
     const QString emptyDescription = "Choose the active local JSON file.";
@@ -1627,7 +1632,7 @@ void MainWindow::setRuleBanner(const QString &title, const QString &message, con
     if (m_ruleBannerMessageLabel) {
         m_ruleBannerMessageLabel->setText(message);
     }
-    setStatusPill(m_ruleBannerStateLabel, tone == "danger" ? "Needs fix" : tone == "warn" ? "Unsaved" : tone == "ok" ? "Valid" : "Ready", tone);
+    setStatusPill(m_ruleBannerStateLabel, tone == "danger" ? "Needs fix" : tone == "warn" ? "Unsaved" : tone == "ok" ? "Valid" : "Saved", tone);
     if (m_ruleBannerTitleLabel && m_ruleBannerTitleLabel->parentWidget()) {
         m_ruleBannerTitleLabel->parentWidget()->setProperty("tone", tone);
         repolish(m_ruleBannerTitleLabel->parentWidget());
@@ -1838,13 +1843,6 @@ void MainWindow::onRuleFileSelectionChanged() {
         return;
     }
 
-    if (m_ruleFileDescriptionLabel) {
-        m_ruleFileDescriptionLabel->setText(file->description.isEmpty() ? "Editable local JSON rule-set" : file->description);
-    }
-    if (m_ruleFilePathLabel) {
-        m_ruleFilePathLabel->setText(compactPath(file->path));
-    }
-
     const auto result = m_ruleSetService->loadFile(file->path);
     if (!result.ok) {
         if (m_editor) {
@@ -1852,6 +1850,7 @@ void MainWindow::onRuleFileSelectionChanged() {
             m_editor->clear();
         }
         m_loadedRuleText.clear();
+        m_ruleFileStatuses.insert(file->path, {"Needs fix", "danger"});
         updateRuleLineNumbers();
         applyEditorErrorHighlight(m_editor, -1, -1);
         setRuleBanner("Load failed", result.error, "danger");
@@ -1872,7 +1871,14 @@ void MainWindow::onRuleFileSelectionChanged() {
     if (m_ruleEditorPathLabel) {
         m_ruleEditorPathLabel->setText(compactPath(file->path));
     }
-    setRuleBanner("Loaded file", file->description.isEmpty() ? compactPath(file->path) : file->description, "neutral");
+    const RuleFileUiStatus status = ruleFileStatusForText(result.text, m_loadedRuleText);
+    m_ruleFileStatuses.insert(file->path, status);
+    if (status.tone == "danger") {
+        const auto validation = m_ruleSetService->validateJson(result.text);
+        setRuleBanner("Needs fix", validation.error.isEmpty() ? compactPath(file->path) : validation.error, "danger");
+    } else {
+        setRuleBanner("Loaded file", file->description.isEmpty() ? compactPath(file->path) : file->description, "neutral");
+    }
     showActionMessage(QString("Loaded %1").arg(file->name), 3000);
 }
 
@@ -1884,12 +1890,15 @@ void MainWindow::onRuleEditorTextChanged() {
 
     updateRuleEditorErrorHighlight();
 
-    const bool dirty = m_editor->toPlainText() != m_loadedRuleText;
-    if (dirty) {
+    const RuleFileUiStatus status = ruleFileStatusForText(m_editor->toPlainText(), m_loadedRuleText);
+    if (status.tone == "danger") {
+        setRuleBanner("Needs fix", "JSON is invalid. Fix syntax before save.", "danger");
+    } else if (status.tone == "warn") {
         setRuleBanner("Unsaved changes", "Validate before save to confirm formatting and JSON syntax.", "warn");
     } else {
         setRuleBanner("Saved copy", "Editor content matches the last loaded or saved file.", "neutral");
     }
+    updateSelectedRuleFileStatus();
     updateRuleFileTrigger();
 }
 
@@ -1900,6 +1909,7 @@ void MainWindow::validateCurrentEditorText() {
 
     const auto result = m_ruleSetService->validateJson(m_editor->toPlainText());
     if (!result.ok) {
+        updateSelectedRuleFileStatus();
         setRuleBanner("Invalid JSON", result.error, "danger");
         showActionMessage(result.error, 5000);
         return;
@@ -1914,6 +1924,7 @@ void MainWindow::validateCurrentEditorText() {
     const bool dirty = result.formattedText != m_loadedRuleText;
     setRuleBanner("Valid JSON", dirty ? "JSON is valid. Save to write the formatted version." : "JSON is valid and matches disk.", "ok");
     showActionMessage("JSON validated", 3000);
+    updateSelectedRuleFileStatus();
     updateRuleFileTrigger();
 }
 
@@ -1925,6 +1936,7 @@ void MainWindow::saveCurrentRuleFile() {
 
     const auto validation = m_ruleSetService->validateJson(m_editor->toPlainText());
     if (!validation.ok) {
+        updateSelectedRuleFileStatus();
         setRuleBanner("Invalid JSON", validation.error, "danger");
         showActionMessage(validation.error, 5000);
         QMessageBox::warning(this, "Save failed", validation.error);
@@ -1948,6 +1960,7 @@ void MainWindow::saveCurrentRuleFile() {
     applyEditorErrorHighlight(m_editor, -1, -1);
     setRuleBanner("Saved", QString("Wrote %1").arg(compactPath(file->path)), "ok");
     showActionMessage("Rule-set saved", 3000);
+    updateSelectedRuleFileStatus();
     updateRuleFileTrigger();
 }
 

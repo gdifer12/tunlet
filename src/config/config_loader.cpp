@@ -317,6 +317,10 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
                             config.configRoute,
                             fallbackBasePath);
                 }
+                if (location["downloadUrl"]) {
+                    config.diagnostics.connection.location.downloadUrl =
+                        QString::fromStdString(location["downloadUrl"].as<std::string>()).trimmed();
+                }
             }
         }
     }

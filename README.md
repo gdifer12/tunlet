@@ -75,6 +75,7 @@ Top-level keys:
 - `timing`: command used to resolve DNS/connect/TLS/total delay
 - `dns`: command used to resolve DNS TXT diagnostics
 - `location.databasePath`: local `GeoLite2-City.mmdb` path used to map the resolved IP to a location
+- `location.downloadUrl`: optional URL to a ready-to-use `.mmdb`; if `databasePath` is missing, tunlet creates the parent directory and downloads the DB on demand
 
 `clashApi.profiles` adds extra named mode mappings on top of the built-in default profiles:
 

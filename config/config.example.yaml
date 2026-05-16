@@ -44,6 +44,7 @@ diagnostics:
     location:
       enabled: true
       databasePath: "tunlet/GeoLite2-City.mmdb"
+      downloadUrl: ""
 
 theme:
   qssPath: ""

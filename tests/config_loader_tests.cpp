@@ -45,6 +45,7 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "    location:\n"
         << "      enabled: true\n"
         << "      databasePath: geo/GeoLite2-City.mmdb\n"
+        << "      downloadUrl: https://example.test/GeoLite2-City.mmdb\n"
         << "editing:\n"
         << "  createBackup: false\n";
     file.close();
@@ -69,6 +70,7 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     REQUIRE(config.diagnostics.connection.dns.executable == "dig");
     REQUIRE(config.diagnostics.connection.location.enabled == true);
     REQUIRE(config.diagnostics.connection.location.databasePath == "/tmp/tunlet-root/geo/GeoLite2-City.mmdb");
+    REQUIRE(config.diagnostics.connection.location.downloadUrl == "https://example.test/GeoLite2-City.mmdb");
     REQUIRE(config.editing.createBackup == false);
 }
 

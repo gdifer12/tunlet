@@ -229,7 +229,7 @@ QToolButton#navTabButton {
     background: transparent;
     border: 1px solid transparent;
     color: #aab5c2;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
 }
 

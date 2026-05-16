@@ -8,6 +8,7 @@
 #include "rules/ruleset_service.hpp"
 
 #include <QMainWindow>
+#include <QHash>
 #include <QPointer>
 #include <QVector>
 
@@ -65,6 +66,11 @@ private:
         QString description;
     };
 
+    struct RuleFileUiStatus {
+        QString text;
+        QString tone;
+    };
+
     void buildUi(bool trayAvailable);
     QWidget *buildWindowTitleBar();
     QWidget *buildTopRuntimeStrip();
@@ -90,6 +96,11 @@ private:
     void openModePopup();
     void openRuleFilePopup();
     void positionSelectorPopup(QWidget *trigger);
+    RuleFileUiStatus ruleFileStatusForText(const QString &text, const QString &loadedText) const;
+    RuleFileUiStatus evaluateRuleFileStatusOnDisk(const NamedRuleFile &file) const;
+    void refreshRuleFileStatusCache();
+    void updateSelectedRuleFileStatus();
+    RuleFileUiStatus statusForRuleFilePath(const QString &path) const;
     void updateRuleFileTrigger();
     void showActionMessage(const QString &message, int timeoutMs = 0);
     void setStatusPill(QLabel *label, const QString &text, const QString &tone);
@@ -108,6 +119,7 @@ private:
     diagnostics::DiagnosticsService *m_diagnosticsService = nullptr;
     rules::RuleSetService *m_ruleSetService = nullptr;
     QVector<NamedRuleFile> m_ruleFiles;
+    QHash<QString, RuleFileUiStatus> m_ruleFileStatuses;
     clash::ModeStatus m_lastStatus;
     diagnostics::DiagnosticsSnapshot m_lastDiagnostics;
     QString m_selectedProfileName;
@@ -151,8 +163,6 @@ private:
     QLabel *m_modeTriggerCaretLabel = nullptr;
 
     QLabel *m_rulePageStatusLabel = nullptr;
-    QLabel *m_ruleFileDescriptionLabel = nullptr;
-    QLabel *m_ruleFilePathLabel = nullptr;
     QLabel *m_ruleEditorTitleLabel = nullptr;
     QLabel *m_ruleEditorPathLabel = nullptr;
     QLabel *m_ruleBannerTitleLabel = nullptr;

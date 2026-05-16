@@ -40,6 +40,7 @@ struct DiagnosticsCommandConfig {
 struct DiagnosticsLocationConfig {
     bool enabled = true;
     QString databasePath;
+    QString downloadUrl;
 };
 
 struct DiagnosticsConnectionConfig {

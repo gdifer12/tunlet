@@ -4,9 +4,14 @@
 #include "diagnostics/diagnostics_parsing.hpp"
 
 #include <QDateTime>
+#include <QDir>
 #include <QFileInfo>
 #include <QHostAddress>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QSaveFile>
 #include <QStringList>
+#include <QUrl>
 
 #include <maxminddb.h>
 
@@ -160,6 +165,7 @@ void DiagnosticsService::refreshNow() {
 
 void DiagnosticsService::updateConfig(const config::AppConfig &config) {
     const bool wasEnabled = m_config.diagnostics.enabled;
+    abortLocationDownload();
     m_config = config;
     m_lastObservedModeValue.clear();
     updateConfigurationSnapshot();
@@ -243,8 +249,11 @@ void DiagnosticsService::updateConfigurationSnapshot() {
                  commandName(diagnostics.connection.timing),
                  commandName(diagnostics.connection.dns));
     m_snapshot.configurationDetail =
-        QString("Geo DB: %1 · refresh %2 · timeout %3 ms")
+        QString("Geo DB: %1%2 · refresh %3 · timeout %4 ms")
             .arg(diagnostics.connection.location.databasePath,
+                 diagnostics.connection.location.downloadUrl.trimmed().isEmpty() ? QString()
+                                                                                 : QString(" · bootstrap %1")
+                                                                                       .arg(diagnostics.connection.location.downloadUrl),
                  formatRefreshInterval(diagnostics.refreshIntervalMs),
                  QString::number(diagnostics.requestTimeoutMs));
 }
@@ -277,6 +286,17 @@ void DiagnosticsService::abortProbe(QPointer<QProcess> &process) {
     }
     process->deleteLater();
     process = nullptr;
+}
+
+void DiagnosticsService::abortLocationDownload() {
+    if (!m_geoDbReply) {
+        return;
+    }
+
+    disconnect(m_geoDbReply, nullptr, this, nullptr);
+    m_geoDbReply->abort();
+    m_geoDbReply->deleteLater();
+    m_geoDbReply = nullptr;
 }
 
 void DiagnosticsService::startIpv4Probe(quint64 generation) {
@@ -525,10 +545,7 @@ void DiagnosticsService::updateLocationFromPublicIp() {
     }
 
     const QString dbPath = m_config.diagnostics.connection.location.databasePath;
-    QFileInfo dbInfo(dbPath);
-    if (!dbInfo.exists() || !dbInfo.isFile()) {
-        m_snapshot.location.clear();
-        m_snapshot.locationDetail = locationLookupError(m_snapshot.publicIp, QString("Geo DB not found at %1").arg(dbPath));
+    if (!ensureLocationDatabaseAvailable(dbPath)) {
         return;
     }
 
@@ -585,6 +602,110 @@ void DiagnosticsService::updateLocationFromPublicIp() {
     m_snapshot.location = parts.isEmpty() ? "Unknown location" : parts.join(", ");
     m_snapshot.locationDetail = QString("Lookup IP: %1 · Geo DB: %2").arg(m_snapshot.publicIp, dbPath);
     MMDB_close(&mmdb);
+}
+
+bool DiagnosticsService::ensureLocationDatabaseAvailable(const QString &dbPath) {
+    const QFileInfo dbInfo(dbPath);
+    if (dbInfo.exists() && dbInfo.isFile()) {
+        return true;
+    }
+
+    QDir dbDir = dbInfo.dir();
+    if (!dbDir.exists() && !dbDir.mkpath(".")) {
+        m_snapshot.location.clear();
+        m_snapshot.locationDetail =
+            locationLookupError(m_snapshot.publicIp, QString("failed to create Geo DB directory %1").arg(dbDir.absolutePath()));
+        return false;
+    }
+
+    const QString downloadUrl = m_config.diagnostics.connection.location.downloadUrl.trimmed();
+    if (downloadUrl.isEmpty()) {
+        m_snapshot.location.clear();
+        m_snapshot.locationDetail =
+            locationLookupError(m_snapshot.publicIp, QString("Geo DB not found at %1 and no downloadUrl configured").arg(dbPath));
+        return false;
+    }
+
+    if (m_geoDbReply) {
+        m_snapshot.location.clear();
+        m_snapshot.locationDetail =
+            locationLookupError(m_snapshot.publicIp, QString("Geo DB download in progress for %1").arg(dbPath));
+        return false;
+    }
+
+    startLocationDatabaseDownload(dbPath, downloadUrl);
+    return false;
+}
+
+void DiagnosticsService::startLocationDatabaseDownload(const QString &dbPath, const QString &downloadUrl) {
+    const QUrl url(downloadUrl);
+    if (!url.isValid() || url.scheme().trimmed().isEmpty()) {
+        m_snapshot.location.clear();
+        m_snapshot.locationDetail =
+            locationLookupError(m_snapshot.publicIp, QString("invalid Geo DB downloadUrl: %1").arg(downloadUrl));
+        return;
+    }
+
+    QNetworkRequest request(url);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    auto *reply = m_networkManager.get(request);
+    m_geoDbReply = reply;
+
+    m_snapshot.location.clear();
+    m_snapshot.locationDetail = locationLookupError(
+        m_snapshot.publicIp,
+        QString("Geo DB missing at %1; downloading from %2").arg(dbPath, downloadUrl));
+    emitSnapshotUpdate();
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, dbPath, downloadUrl]() {
+        if (m_geoDbReply != reply) {
+            reply->deleteLater();
+            return;
+        }
+        m_geoDbReply = nullptr;
+
+        if (reply->error() != QNetworkReply::NoError) {
+            m_snapshot.location.clear();
+            m_snapshot.locationDetail = locationLookupError(
+                m_snapshot.publicIp,
+                QString("failed to download Geo DB from %1: %2").arg(downloadUrl, reply->errorString()));
+            emitSnapshotUpdate();
+            reply->deleteLater();
+            return;
+        }
+
+        const QByteArray payload = reply->readAll();
+        if (payload.isEmpty()) {
+            m_snapshot.location.clear();
+            m_snapshot.locationDetail =
+                locationLookupError(m_snapshot.publicIp, QString("downloaded empty Geo DB payload from %1").arg(downloadUrl));
+            emitSnapshotUpdate();
+            reply->deleteLater();
+            return;
+        }
+
+        QSaveFile file(dbPath);
+        if (!file.open(QIODevice::WriteOnly)) {
+            m_snapshot.location.clear();
+            m_snapshot.locationDetail =
+                locationLookupError(m_snapshot.publicIp, QString("failed to open %1 for write").arg(dbPath));
+            emitSnapshotUpdate();
+            reply->deleteLater();
+            return;
+        }
+        if (file.write(payload) != payload.size() || !file.commit()) {
+            m_snapshot.location.clear();
+            m_snapshot.locationDetail =
+                locationLookupError(m_snapshot.publicIp, QString("failed to persist downloaded Geo DB to %1").arg(dbPath));
+            emitSnapshotUpdate();
+            reply->deleteLater();
+            return;
+        }
+
+        updateLocationFromPublicIp();
+        emitSnapshotUpdate();
+        reply->deleteLater();
+    });
 }
 
 void DiagnosticsService::emitSnapshotUpdate() {

@@ -4,10 +4,13 @@
 #include "config/app_config.hpp"
 
 #include <QDateTime>
+#include <QNetworkAccessManager>
 #include <QObject>
 #include <QPointer>
 #include <QProcess>
 #include <QTimer>
+
+class QNetworkReply;
 
 namespace tunlet::clash {
 struct ModeStatus;
@@ -62,6 +65,9 @@ private:
     void startIpv4Probe(quint64 generation);
     void startTimingProbe(quint64 generation);
     void startDnsProbe(quint64 generation);
+    void abortLocationDownload();
+    bool ensureLocationDatabaseAvailable(const QString &dbPath);
+    void startLocationDatabaseDownload(const QString &dbPath, const QString &downloadUrl);
     void updateLocationFromPublicIp();
     void emitSnapshotUpdate();
 
@@ -74,6 +80,8 @@ private:
     QPointer<QProcess> m_ipv4Process;
     QPointer<QProcess> m_timingProcess;
     QPointer<QProcess> m_dnsProcess;
+    QNetworkAccessManager m_networkManager;
+    QPointer<QNetworkReply> m_geoDbReply;
 };
 
 }  // namespace tunlet::diagnostics
