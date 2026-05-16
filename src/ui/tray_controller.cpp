@@ -9,10 +9,6 @@ namespace tunlet::ui {
 
 namespace {
 
-bool isBuiltInProfile(const QString &profileName) {
-    return profileName == "direct" || profileName == "proxy" || profileName == "auto";
-}
-
 QString currentModeLabel(const clash::ModeStatus &status) {
     if (!status.currentProfileName.isEmpty() && status.currentProfileName != "unknown") {
         return status.currentProfileName;
@@ -20,13 +16,23 @@ QString currentModeLabel(const clash::ModeStatus &status) {
     return status.currentModeValue.isEmpty() ? QString("unknown") : status.currentModeValue;
 }
 
+QString displayModeName(QString value) {
+    value = value.trimmed();
+    if (value.isEmpty()) {
+        return "Unknown";
+    }
+    value.replace('-', ' ');
+    value.replace('_', ' ');
+    value[0] = value.front().toUpper();
+    return value;
+}
+
 }  // namespace
 
 TrayController::TrayController(QObject *parent)
     : QObject(parent),
       m_trayIcon(new QSystemTrayIcon(QIcon(":/icons/tunlet.svg"), this)),
-      m_menu(new QMenu()),
-      m_modeMenu(new QMenu("More Profiles", m_menu)) {}
+      m_menu(new QMenu()) {}
 
 TrayController::~TrayController() = default;
 
@@ -58,7 +64,6 @@ void TrayController::updateProfiles(const QVector<config::ClashModeProfile> &pro
 
 void TrayController::rebuildModeMenu() {
     m_menu->clear();
-    m_modeMenu->clear();
 
     const QString modeLabel = currentModeLabel(m_status);
     const QString statusLabel = m_status.busy ? "refreshing" : (m_status.reachable ? "api reachable" : "api down");
@@ -66,39 +71,17 @@ void TrayController::rebuildModeMenu() {
     summaryAction->setEnabled(false);
 
     m_menu->addSeparator();
-
-    auto addBuiltInAction = [this](const QString &profileName, const QString &label) {
+    if (m_profiles.isEmpty()) {
+        auto *noProfilesAction = m_menu->addAction("No profiles configured");
+        noProfilesAction->setEnabled(false);
+    } else {
         for (const auto &profile : m_profiles) {
-            if (profile.name != profileName) {
-                continue;
-            }
-            const QString current = profile.name == m_status.currentProfileName ? QString("%1 [current]").arg(label) : label;
-            auto *action = makeSwitchAction(m_menu, profile.name, current);
+            const QString displayName = profile.name == m_status.currentProfileName
+                                            ? QString("%1 [current]").arg(profile.name)
+                                            : profile.name;
+            auto *action = makeSwitchAction(m_menu, profile.name, displayModeName(displayName));
             action->setEnabled(!m_status.busy && profile.name != m_status.currentProfileName);
-            return;
         }
-    };
-
-    addBuiltInAction("direct", "Direct");
-    addBuiltInAction("proxy", "Proxy");
-    addBuiltInAction("auto", "Auto");
-
-    bool hasExtraProfiles = false;
-    for (const auto &profile : m_profiles) {
-        if (isBuiltInProfile(profile.name)) {
-            continue;
-        }
-        hasExtraProfiles = true;
-        const QString label = profile.name == m_status.currentProfileName
-                                  ? QString("%1 [current]").arg(profile.name)
-                                  : profile.name;
-        auto *action = makeSwitchAction(m_modeMenu, profile.name, label);
-        action->setEnabled(!m_status.busy && profile.name != m_status.currentProfileName);
-    }
-
-    if (hasExtraProfiles) {
-        m_menu->addSeparator();
-        m_menu->addMenu(m_modeMenu);
     }
 
     m_menu->addSeparator();

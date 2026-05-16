@@ -22,6 +22,7 @@ qt_standard_project_setup()
 
 set(TUNLET_SOURCES
     src/app/application_paths.cpp
+    src/app/runtime_config_applier.cpp
     src/core/logical_mode.cpp
     src/config/config_loader.cpp
     src/config/config_file_service.cpp

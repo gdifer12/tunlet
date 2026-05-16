@@ -19,6 +19,7 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "clashApi:\n"
         << "  host: 127.0.0.1\n"
         << "  port: 9090\n"
+        << "  disableDefaultProfiles: false\n"
         << "  profiles:\n"
         << "    - name: gaming\n"
         << "      mode: gaming\n"
@@ -47,12 +48,16 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "      databasePath: geo/GeoLite2-City.mmdb\n"
         << "      downloadUrl: https://example.test/GeoLite2-City.mmdb\n"
         << "editing:\n"
-        << "  createBackup: false\n";
+        << "  createBackup: false\n"
+        << "tray:\n"
+        << "  keepRunningWithoutWindow: false\n"
+        << "  startHidden: true\n";
     file.close();
 
     const auto config = tunlet::config::ConfigLoader::loadFromPath(configPath);
     REQUIRE(config.clashApi.host == "127.0.0.1");
     REQUIRE(config.clashApi.port == 9090);
+    REQUIRE(config.clashApi.disableDefaultProfiles == false);
     REQUIRE(config.clashApi.profiles.size() == 4);
     REQUIRE(config.clashApi.profiles.at(0).name == "direct");
     REQUIRE(config.clashApi.profiles.at(0).mode == "direct");
@@ -72,6 +77,8 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     REQUIRE(config.diagnostics.connection.location.databasePath == "/tmp/tunlet-root/geo/GeoLite2-City.mmdb");
     REQUIRE(config.diagnostics.connection.location.downloadUrl == "https://example.test/GeoLite2-City.mmdb");
     REQUIRE(config.editing.createBackup == false);
+    REQUIRE(config.tray.keepRunningWithoutWindow == false);
+    REQUIRE(config.tray.startHidden == true);
 }
 
 TEST_CASE("ConfigLoader derives default GeoLite path from config directory", "[config]") {
@@ -101,6 +108,29 @@ TEST_CASE("ConfigLoader derives default GeoLite path from config directory", "[c
     REQUIRE(config.configRoute == dir.path());
     REQUIRE(config.ruleSets.forceProxyPath == dir.path() + "/force-proxy.json");
     REQUIRE(config.diagnostics.connection.location.databasePath == dir.path() + "/GeoLite2-City.mmdb");
+    REQUIRE(config.tray.keepRunningWithoutWindow == true);
+    REQUIRE(config.tray.startHidden == false);
+}
+
+TEST_CASE("ConfigLoader can disable built-in default profiles", "[config]") {
+    const QString config = QString()
+        + "clashApi:\n"
+        + "  host: 127.0.0.1\n"
+        + "  port: 9090\n"
+        + "  disableDefaultProfiles: true\n"
+        + "  profiles:\n"
+        + "    - name: gaming\n"
+        + "      mode: gaming\n"
+        + "ruleSets:\n"
+        + "  forceProxyPath: /tmp/force-proxy.json\n"
+        + "  forceDirectPath: /tmp/force-direct.json\n"
+        + "  autoProxyPath: /tmp/auto-proxy.json\n"
+        + "  autoDirectPath: /tmp/auto-direct.json\n";
+
+    const auto parsed = tunlet::config::ConfigLoader::loadFromData(config, "/tmp/tunlet/config.yaml");
+    REQUIRE(parsed.clashApi.disableDefaultProfiles == true);
+    REQUIRE(parsed.clashApi.profiles.size() == 1);
+    REQUIRE(parsed.clashApi.profiles.at(0).name == "gaming");
 }
 
 TEST_CASE("ConfigLoader rejects legacy externalIp diagnostics schema", "[config]") {

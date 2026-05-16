@@ -439,3 +439,23 @@ QScrollBar::sub-page:vertical {
     background: transparent;
     border: none;
 }
+
+QPlainTextEdit QScrollBar:horizontal {
+    background: transparent;
+    height: 12px;
+    margin: 4px;
+}
+
+QPlainTextEdit QScrollBar::handle:horizontal {
+    background: #3a475b;
+    border-radius: 6px;
+    min-width: 28px;
+}
+
+QPlainTextEdit QScrollBar::add-line:horizontal,
+QPlainTextEdit QScrollBar::sub-line:horizontal,
+QPlainTextEdit QScrollBar::add-page:horizontal,
+QPlainTextEdit QScrollBar::sub-page:horizontal {
+    background: transparent;
+    border: none;
+}

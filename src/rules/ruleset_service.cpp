@@ -23,6 +23,10 @@ int utf8OffsetToUtf16Index(const QString &text, int utf8Offset) {
 RuleSetService::RuleSetService(config::EditingConfig editingConfig)
     : m_editingConfig(std::move(editingConfig)) {}
 
+void RuleSetService::updateEditingConfig(const config::EditingConfig &editingConfig) {
+    m_editingConfig = editingConfig;
+}
+
 FileLoadResult RuleSetService::loadFile(const QString &path) const {
     QFile file(path);
     if (!file.exists()) {

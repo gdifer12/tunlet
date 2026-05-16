@@ -15,6 +15,7 @@ struct ClashModeProfile {
 struct ClashApiConfig {
     QString host = "127.0.0.1";
     quint16 port = 0;
+    bool disableDefaultProfiles = false;
     QVector<ClashModeProfile> profiles;
 };
 
@@ -66,6 +67,11 @@ struct EditingConfig {
     QString backupSuffix = ".bak";
 };
 
+struct TrayConfig {
+    bool keepRunningWithoutWindow = true;
+    bool startHidden = false;
+};
+
 struct AppConfig {
     QString configRoute;
     ClashApiConfig clashApi;
@@ -73,6 +79,7 @@ struct AppConfig {
     DiagnosticsConfig diagnostics;
     ThemeConfig theme;
     EditingConfig editing;
+    TrayConfig tray;
     QString configPath;
 };
 

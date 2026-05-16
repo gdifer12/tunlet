@@ -15,12 +15,14 @@ bool ThemeLoader::applyOptionalStylesheet(QApplication &application, const QStri
     if (!path.trimmed().isEmpty()) {
         QFile file(path);
         if (!file.exists()) {
+            application.setStyleSheet(combinedStylesheet);
             if (errorMessage) {
                 *errorMessage = QString("QSS file not found: %1").arg(path);
             }
             return false;
         }
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            application.setStyleSheet(combinedStylesheet);
             if (errorMessage) {
                 *errorMessage = QString("failed to open QSS file: %1").arg(file.errorString());
             }

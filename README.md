@@ -6,9 +6,9 @@ It is intentionally not a VPN manager, service manager, config generator, or net
 
 ## Features
 
-- Single Clash API endpoint with logical `direct`, `proxy`, and `auto` profiles by default
+- Single Clash API endpoint with built-in logical `direct`, `proxy`, and `auto` profiles by default
 - Additional named mode profiles configurable in YAML
-- Tray menu for quick switching and status refresh
+- Tray menu for quick switching and background runtime refresh
 - Compact main window for control, diagnostics, and JSON rule-set editing
 - JSON validation and safe-save with optional backups
 - Optional command-driven connection diagnostics for IP, delay, DNS, and GeoLite2 location
@@ -19,10 +19,10 @@ It is intentionally not a VPN manager, service manager, config generator, or net
 
 ### NixOS / flake-based development
 
-The container and project use `nix-command` and `flakes` explicitly:
+The project ships its own flake and can be built directly from the repository:
 
 ```bash
-nix --extra-experimental-features 'nix-command flakes' develop /state/agent-env -c bash
+nix --extra-experimental-features 'nix-command flakes' develop -c bash
 cmake -S . -B build -G Ninja
 cmake --build build
 ./build/tunlet
@@ -33,6 +33,8 @@ You can also build the package directly:
 ```bash
 nix --extra-experimental-features 'nix-command flakes' build
 ```
+
+If you are using a separate container-level devshell such as `/state/agent-env`, treat that as environment-specific convenience only. It is not required by this repository and is not part of the project layout.
 
 ### Desktop notes
 
@@ -66,6 +68,7 @@ Top-level keys:
 - `diagnostics`
 - `theme`
 - `editing`
+- `tray`
 
 `configRoute` is the base directory used to resolve relative file paths in the config, for example `~/.config`.
 
@@ -77,7 +80,9 @@ Top-level keys:
 - `location.databasePath`: local `GeoLite2-City.mmdb` path used to map the resolved IP to a location
 - `location.downloadUrl`: optional URL to a ready-to-use `.mmdb`; if `databasePath` is missing, tunlet creates the parent directory and downloads the DB on demand
 
-`clashApi.profiles` adds extra named mode mappings on top of the built-in default profiles:
+Location lookup uses the MaxMind GeoLite2 City database format. In many setups you should expect to obtain `GeoLite2-City.mmdb` manually and place it at `location.databasePath`. The optional `downloadUrl` exists only for explicit auto-bootstrap setups where you already control a compatible `.mmdb` download source.
+
+`clashApi.profiles` adds extra named mode mappings on top of the built-in default profiles unless `clashApi.disableDefaultProfiles` is set to `true`:
 
 - `direct -> direct`
 - `proxy -> global`
@@ -91,11 +96,18 @@ Each extra profile may define:
 
 This avoids hardcoding the complete list of supported mode values in the UI.
 
+`tray` controls background tray behavior:
+
+- `keepRunningWithoutWindow`: when `true`, closing the main window hides it to tray instead of exiting
+- `startHidden`: when `true`, and a tray host is available, tunlet starts without showing the main window
+
+`Save and apply` and `Reload` on the `Settings / Info` page re-apply runtime configuration without restarting the process. `tray.startHidden` is the exception: it is stored immediately but only affects the next launch.
+
 ## MVP behavior
 
 - The app loads YAML config at startup and validates required fields.
 - The current Clash mode is shown prominently and can be switched through configured profiles.
-- Additional profiles are listed and can be switched from the main window or tray submenu.
+- Additional profiles are listed and can be switched from the main window or tray menu.
 - The UI also shows the `mode-list` reported by `/configs`, so you can see which backend modes are actually available.
 - Rule-set files are edited as JSON text, validated before save, and written via safe-save semantics.
 - The YAML app config can be edited from the UI with validation and safe-save.
@@ -119,5 +131,5 @@ This avoids hardcoding the complete list of supported mode values in the UI.
 
 - Clash-compatible mode switching happens through `PATCH /configs` with a configured `mode` value.
 - By default, tunlet maps logical `direct/proxy/auto` to Clash `direct/global/rule` and writes the built-in Clash values as `Direct/Global/Rule`.
-- Extra profiles can be added on top of those defaults through `clashApi.profiles`.
+- Those built-in profiles can be disabled through `clashApi.disableDefaultProfiles`, in which case only explicitly configured profiles are exposed.
 - The first version does not manage the `sing-box` process lifecycle.

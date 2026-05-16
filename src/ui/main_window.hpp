@@ -1,6 +1,7 @@
 #pragma once
 
 #include "clash/mode_controller.hpp"
+#include "app/runtime_config_applier.hpp"
 #include "config/app_config.hpp"
 #include "config/config_file_service.hpp"
 #include "config/config_loader.hpp"
@@ -13,6 +14,7 @@
 #include <QVector>
 
 class QAbstractButton;
+class QCloseEvent;
 class QEvent;
 class QLabel;
 class QObject;
@@ -35,6 +37,7 @@ public:
                config::ConfigFileService *configFileService,
                diagnostics::DiagnosticsService *diagnosticsService,
                rules::RuleSetService *ruleSetService,
+               app::RuntimeConfigApplier *runtimeConfigApplier,
                bool trayAvailable,
                QWidget *parent = nullptr);
 
@@ -42,6 +45,7 @@ public slots:
     void showAndRaise();
 
 protected:
+    void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
@@ -118,6 +122,7 @@ private:
     config::ConfigFileService *m_configFileService = nullptr;
     diagnostics::DiagnosticsService *m_diagnosticsService = nullptr;
     rules::RuleSetService *m_ruleSetService = nullptr;
+    app::RuntimeConfigApplier *m_runtimeConfigApplier = nullptr;
     QVector<NamedRuleFile> m_ruleFiles;
     QHash<QString, RuleFileUiStatus> m_ruleFileStatuses;
     clash::ModeStatus m_lastStatus;

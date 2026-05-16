@@ -226,7 +226,10 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
 
     config.clashApi.host = clashApi["host"] ? QString::fromStdString(clashApi["host"].as<std::string>()) : QString("127.0.0.1");
     config.clashApi.port = requirePort(clashApi, "port", "clashApi");
-    config.clashApi.profiles = defaultProfiles();
+    config.clashApi.disableDefaultProfiles = readBool(clashApi, "disableDefaultProfiles", false);
+    if (!config.clashApi.disableDefaultProfiles) {
+        config.clashApi.profiles = defaultProfiles();
+    }
 
     if (const YAML::Node profiles = clashApi["profiles"]) {
         if (!profiles.IsSequence()) {
@@ -340,6 +343,14 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
         if (config.editing.backupSuffix.isEmpty()) {
             config.editing.backupSuffix = ".bak";
         }
+    }
+
+    if (const YAML::Node tray = root["tray"]) {
+        if (!tray.IsMap()) {
+            throw std::runtime_error("tray must be a map");
+        }
+        config.tray.keepRunningWithoutWindow = readBool(tray, "keepRunningWithoutWindow", true);
+        config.tray.startHidden = readBool(tray, "startHidden", false);
     }
 
     return config;

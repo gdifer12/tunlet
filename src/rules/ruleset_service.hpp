@@ -31,6 +31,7 @@ class RuleSetService {
 public:
     explicit RuleSetService(config::EditingConfig editingConfig);
 
+    void updateEditingConfig(const config::EditingConfig &editingConfig);
     FileLoadResult loadFile(const QString &path) const;
     ValidationResult validateJson(const QString &text) const;
     SaveResult saveFile(const QString &path, const QString &text) const;

@@ -13,6 +13,10 @@ namespace tunlet::config {
 ConfigFileService::ConfigFileService(EditingConfig editingConfig)
     : m_editingConfig(std::move(editingConfig)) {}
 
+void ConfigFileService::updateEditingConfig(const EditingConfig &editingConfig) {
+    m_editingConfig = editingConfig;
+}
+
 ConfigFileLoadResult ConfigFileService::loadFile(const QString &path) const {
     QFile file(path);
     if (!file.exists()) {

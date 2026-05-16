@@ -1,4 +1,5 @@
 #include "app/application_paths.hpp"
+#include "app/runtime_config_applier.hpp"
 #include "clash/clash_api_client.hpp"
 #include "clash/mode_controller.hpp"
 #include "config/config_file_service.hpp"
@@ -52,7 +53,26 @@ int main(int argc, char *argv[]) {
     tunlet::rules::RuleSetService ruleSetService(config.editing);
     tunlet::diagnostics::DiagnosticsService diagnosticsService(config, &clashClient);
     tunlet::ui::TrayController trayController;
-    tunlet::ui::MainWindow mainWindow(config, &modeController, &configFileService, &diagnosticsService, &ruleSetService, trayController.isTrayAvailable());
+    tunlet::app::RuntimeConfigApplier runtimeConfigApplier(
+        &app,
+        &clashClient,
+        &modeController,
+        &configFileService,
+        &ruleSetService,
+        &diagnosticsService,
+        &trayController);
+    tunlet::ui::MainWindow mainWindow(
+        config,
+        &modeController,
+        &configFileService,
+        &diagnosticsService,
+        &ruleSetService,
+        &runtimeConfigApplier,
+        trayController.isTrayAvailable());
+    const bool keepRunningInTray = trayController.isTrayAvailable() && config.tray.keepRunningWithoutWindow;
+    const bool startHiddenInTray = trayController.isTrayAvailable() && config.tray.startHidden;
+
+    app.setQuitOnLastWindowClosed(!keepRunningInTray);
 
     trayController.setup(modeController.status(), modeController.profiles());
     QObject::connect(&trayController, &tunlet::ui::TrayController::openMainWindowRequested, &mainWindow, &tunlet::ui::MainWindow::showAndRaise);
@@ -65,7 +85,9 @@ int main(int argc, char *argv[]) {
     QObject::connect(&modeController, &tunlet::clash::ModeController::profilesUpdated, &trayController, &tunlet::ui::TrayController::updateProfiles);
 
     trayController.show();
-    mainWindow.show();
+    if (!startHiddenInTray) {
+        mainWindow.show();
+    }
     modeController.refreshStatus();
     diagnosticsService.start();
 

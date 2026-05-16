@@ -2,7 +2,6 @@
 
 #include "clash/mode_controller.hpp"
 
-#include <QHash>
 #include <QObject>
 
 class QAction;
@@ -36,7 +35,6 @@ private:
 
     QSystemTrayIcon *m_trayIcon = nullptr;
     QMenu *m_menu = nullptr;
-    QMenu *m_modeMenu = nullptr;
     clash::ModeStatus m_status;
     QVector<config::ClashModeProfile> m_profiles;
 };

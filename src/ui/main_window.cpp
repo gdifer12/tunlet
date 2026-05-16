@@ -4,6 +4,7 @@
 #include <QAbstractButton>
 #include <QCoreApplication>
 #include <QColor>
+#include <QCloseEvent>
 #include <QDateTime>
 #include <QDir>
 #include <QEvent>
@@ -230,6 +231,7 @@ MainWindow::MainWindow(const config::AppConfig &config,
                        config::ConfigFileService *configFileService,
                        diagnostics::DiagnosticsService *diagnosticsService,
                        rules::RuleSetService *ruleSetService,
+                       app::RuntimeConfigApplier *runtimeConfigApplier,
                        bool trayAvailable,
                        QWidget *parent)
     : QMainWindow(parent),
@@ -238,6 +240,7 @@ MainWindow::MainWindow(const config::AppConfig &config,
       m_configFileService(configFileService),
       m_diagnosticsService(diagnosticsService),
       m_ruleSetService(ruleSetService),
+      m_runtimeConfigApplier(runtimeConfigApplier),
       m_trayAvailable(trayAvailable) {
     buildUi(trayAvailable);
     populateModeProfiles();
@@ -260,8 +263,23 @@ MainWindow::MainWindow(const config::AppConfig &config,
 
 void MainWindow::showAndRaise() {
     show();
+    if (isMinimized()) {
+        setWindowState(windowState() & ~Qt::WindowMinimized);
+    }
     raise();
     activateWindow();
+}
+
+void MainWindow::closeEvent(QCloseEvent *event) {
+    if (m_trayAvailable && m_config.tray.keepRunningWithoutWindow) {
+        closeSelectorPopup();
+        hide();
+        showActionMessage("Main window hidden to tray", 3000);
+        event->ignore();
+        return;
+    }
+
+    QMainWindow::closeEvent(event);
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
@@ -1111,14 +1129,10 @@ void MainWindow::setCurrentPage(int index) {
 
 void MainWindow::applyConfig(const config::AppConfig &config) {
     m_config = config;
-    m_modeController->updateConfig(m_config);
-    m_diagnosticsService->updateConfig(m_config);
 
     populateModeProfiles();
     populateRuleFiles();
     updateDashboardCards();
-    m_modeController->refreshStatus();
-    m_diagnosticsService->refreshNow();
 }
 
 void MainWindow::populateModeProfiles() {
@@ -1128,8 +1142,6 @@ void MainWindow::populateModeProfiles() {
         setSelectedProfileName(preferredSelection);
     } else if (hasProfile(m_lastStatus.currentProfileName)) {
         setSelectedProfileName(m_lastStatus.currentProfileName);
-    } else if (hasProfile("auto")) {
-        setSelectedProfileName("auto");
     } else if (!m_modeController->profiles().isEmpty()) {
         setSelectedProfileName(m_modeController->profiles().first().name);
     } else {
@@ -1217,7 +1229,9 @@ const MainWindow::NamedRuleFile *MainWindow::selectedRuleFile() const {
 }
 
 void MainWindow::updateModeSelectionUi() {
-    QString profileDescription = "Choose a profile to switch immediately.";
+    QString profileDescription = m_modeController->profiles().isEmpty()
+                                     ? QString("No mode profiles configured. Add entries in config.yaml.")
+                                     : QString("Choose a profile to switch immediately.");
     QString targetModeValue;
 
     for (const auto &profile : m_modeController->profiles()) {
@@ -1235,7 +1249,9 @@ void MainWindow::updateModeSelectionUi() {
     }
 
     if (m_modeTriggerValueLabel) {
-        const QString displayName = m_selectedProfileName.isEmpty() ? "Unknown" : displayModeName(m_selectedProfileName);
+        const QString displayName = m_selectedProfileName.isEmpty()
+                                        ? (m_modeController->profiles().isEmpty() ? QString("No profiles") : QString("Unknown"))
+                                        : displayModeName(m_selectedProfileName);
         m_modeTriggerValueLabel->setText(displayName);
     }
     if (m_profileDescriptionLabel) {
@@ -2030,8 +2046,9 @@ void MainWindow::saveSettingsFile() {
         return;
     }
 
+    config::AppConfig parsedConfig;
     try {
-        applyConfig(config::ConfigLoader::loadFromData(text, m_config.configPath));
+        parsedConfig = config::ConfigLoader::loadFromData(text, m_config.configPath);
     } catch (const std::exception &ex) {
         const QString error = QString("Config saved but failed to apply: %1").arg(ex.what());
         setSettingsBanner(error, "warn");
@@ -2039,10 +2056,21 @@ void MainWindow::saveSettingsFile() {
         return;
     }
 
+    app::RuntimeConfigApplyResult applyResult;
+    if (m_runtimeConfigApplier) {
+        applyResult = m_runtimeConfigApplier->apply(parsedConfig);
+    }
+    applyConfig(parsedConfig);
     m_loadedSettingsText = text;
-    setSettingsBanner("Config saved and applied.", "ok");
+    if (!applyResult.warning.trimmed().isEmpty()) {
+        const QString warning = QString("Config saved and applied with warning: %1").arg(applyResult.warning);
+        setSettingsBanner(warning, "warn");
+        showActionMessage(warning, 5000);
+    } else {
+        setSettingsBanner("Config saved and applied.", "ok");
+        showActionMessage("Config saved", 3000);
+    }
     applyEditorErrorHighlight(m_settingsEditor, -1, -1);
-    showActionMessage("Config saved", 3000);
 }
 
 void MainWindow::reloadSettingsFile() {
@@ -2069,9 +2097,20 @@ void MainWindow::reloadSettingsFile() {
     updateSettingsEditorErrorHighlight();
 
     try {
-        applyConfig(config::ConfigLoader::loadFromData(result.text, m_config.configPath));
-        setSettingsBanner("Loaded and applied current config.yaml.", "ok");
-        showActionMessage("Config reloaded", 3000);
+        const auto parsedConfig = config::ConfigLoader::loadFromData(result.text, m_config.configPath);
+        app::RuntimeConfigApplyResult applyResult;
+        if (m_runtimeConfigApplier) {
+            applyResult = m_runtimeConfigApplier->apply(parsedConfig);
+        }
+        applyConfig(parsedConfig);
+        if (!applyResult.warning.trimmed().isEmpty()) {
+            const QString warning = QString("Loaded config with warning: %1").arg(applyResult.warning);
+            setSettingsBanner(warning, "warn");
+            showActionMessage(warning, 5000);
+        } else {
+            setSettingsBanner("Loaded and applied current config.yaml.", "ok");
+            showActionMessage("Config reloaded", 3000);
+        }
     } catch (const std::exception &ex) {
         const QString error = QString("Loaded config text but failed to apply: %1").arg(ex.what());
         setSettingsBanner(error, "warn");

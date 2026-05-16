@@ -28,6 +28,7 @@ class ConfigFileService {
 public:
     explicit ConfigFileService(EditingConfig editingConfig);
 
+    void updateEditingConfig(const EditingConfig &editingConfig);
     ConfigFileLoadResult loadFile(const QString &path) const;
     ConfigFileValidationResult validateConfigText(const QString &path, const QString &text) const;
     ConfigFileSaveResult saveFile(const QString &path, const QString &text) const;

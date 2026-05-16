@@ -33,6 +33,7 @@
           ];
 
           buildInputs = with pkgs; [
+            libmaxminddb
             qt6.qtbase
             qt6.qtsvg
             yaml-cpp
@@ -49,6 +50,7 @@
             ninja
             pkg-config
             gdb
+            libmaxminddb
             qt6.qtbase
             qt6.qtsvg
             yaml-cpp

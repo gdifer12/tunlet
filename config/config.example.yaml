@@ -3,6 +3,7 @@ configRoute: "~/.config"
 clashApi:
   host: "127.0.0.1"
   port: 21090
+  disableDefaultProfiles: false
   profiles:
     - name: "work"
       mode: "work"
@@ -52,3 +53,7 @@ theme:
 editing:
   createBackup: true
   backupSuffix: ".bak"
+
+tray:
+  keepRunningWithoutWindow: true
+  startHidden: false
