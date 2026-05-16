@@ -80,7 +80,7 @@ Top-level keys:
 - `location.databasePath`: local `GeoLite2-City.mmdb` path used to map the resolved IP to a location
 - `location.downloadUrl`: optional URL to a ready-to-use `.mmdb`; if `databasePath` is missing, tunlet creates the parent directory and downloads the DB on demand
 
-Location lookup uses the MaxMind GeoLite2 City database format. In many setups you should expect to obtain `GeoLite2-City.mmdb` manually and place it at `location.databasePath`. The optional `downloadUrl` exists only for explicit auto-bootstrap setups where you already control a compatible `.mmdb` download source.
+Location lookup uses the MaxMind GeoLite2 City database format. In many setups you should expect to obtain `GeoLite2-City.mmdb` manually and place it at `location.databasePath`. You should download GeoLite2 City from MaxMind using your own MaxMind account ([GeoLite2 data © MaxMind](https://www.maxmind.com/en/geolite-free-ip-geolocation-data)). The optional `downloadUrl` exists only for explicit auto-bootstrap setups where you already control a compatible `.mmdb` download source.
 
 `clashApi.profiles` adds extra named mode mappings on top of the built-in default profiles unless `clashApi.disableDefaultProfiles` is set to `true`:
 
