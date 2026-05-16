@@ -11,13 +11,16 @@
 #include <QPointer>
 #include <QVector>
 
-class QComboBox;
+class QAbstractButton;
+class QEvent;
 class QLabel;
-class QListWidget;
+class QObject;
 class QPlainTextEdit;
 class QPushButton;
 class QResizeEvent;
+class QScrollArea;
 class QStackedWidget;
+class QToolButton;
 class QWidget;
 
 namespace tunlet::ui {
@@ -38,6 +41,7 @@ public slots:
     void showAndRaise();
 
 protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
 private slots:
@@ -63,11 +67,14 @@ private:
 
     void buildUi(bool trayAvailable);
     QWidget *buildWindowTitleBar();
-    QWidget *buildTopTabs();
+    QWidget *buildTopRuntimeStrip();
     QWidget *buildHealthStrip();
+    QWidget *buildBottomNav();
+    QWidget *buildBottomStatusLine();
     QWidget *buildDashboardPage();
     QWidget *buildRuleSetsPage();
     QWidget *buildSettingsInfoPage();
+    QScrollArea *wrapPageInScrollArea(QWidget *content, const QString &objectName);
     void applyConfig(const config::AppConfig &config);
     void populateRuleFiles();
     void populateModeProfiles();
@@ -75,6 +82,12 @@ private:
     void updateModeSelectionUi();
     void updateWindowSizeLabel();
     void updateRuleLineNumbers();
+    void refreshRecentActionLabel();
+    void closeSelectorPopup();
+    void openModePopup();
+    void openRuleFilePopup();
+    void positionSelectorPopup(QWidget *trigger);
+    void updateRuleFileTrigger();
     void showActionMessage(const QString &message, int timeoutMs = 0);
     void setStatusPill(QLabel *label, const QString &text, const QString &tone);
     void setRuleBanner(const QString &title, const QString &message, const QString &tone);
@@ -95,11 +108,13 @@ private:
     clash::ModeStatus m_lastStatus;
     diagnostics::DiagnosticsSnapshot m_lastDiagnostics;
     QString m_selectedProfileName;
+    QString m_selectedRuleFilePath;
     QString m_loadedRuleText;
     QString m_loadedSettingsText;
+    QString m_recentActionText = "Ready";
 
     QStackedWidget *m_pages = nullptr;
-    QVector<QPointer<QPushButton>> m_navButtons;
+    QVector<QPointer<QAbstractButton>> m_navButtons;
 
     QLabel *m_headerReachabilityLabel = nullptr;
     QLabel *m_windowSizeLabel = nullptr;
@@ -120,19 +135,19 @@ private:
     QLabel *m_lastReloadDetail = nullptr;
     QLabel *m_connectionEndpointValue = nullptr;
     QLabel *m_connectionDiagnosticsValue = nullptr;
-    QLabel *m_connectionIpValue = nullptr;
-    QLabel *m_connectionLocationValue = nullptr;
+    QLabel *m_connectionTunValue = nullptr;
+    QLabel *m_connectionDnsValue = nullptr;
     QLabel *m_connectionRoutingValue = nullptr;
-    QLabel *m_connectionModesValue = nullptr;
     QLabel *m_controllerAddressValue = nullptr;
     QLabel *m_rulesDirectoryValue = nullptr;
     QLabel *m_configRootValue = nullptr;
     QLabel *m_profileHintValue = nullptr;
-    QLabel *m_traySummaryValue = nullptr;
-    QComboBox *m_profileCombo = nullptr;
+    QPushButton *m_modeTriggerButton = nullptr;
+    QLabel *m_modeTriggerValueLabel = nullptr;
+    QLabel *m_modeTriggerSubLabel = nullptr;
+    QLabel *m_modeTriggerCaretLabel = nullptr;
 
     QLabel *m_rulePageStatusLabel = nullptr;
-    QComboBox *m_ruleFileCombo = nullptr;
     QLabel *m_ruleFileDescriptionLabel = nullptr;
     QLabel *m_ruleFilePathLabel = nullptr;
     QLabel *m_ruleEditorTitleLabel = nullptr;
@@ -141,6 +156,11 @@ private:
     QLabel *m_ruleBannerMessageLabel = nullptr;
     QLabel *m_ruleBannerStateLabel = nullptr;
     QLabel *m_ruleLineNumbersLabel = nullptr;
+    QPushButton *m_ruleFileTriggerButton = nullptr;
+    QLabel *m_ruleFileTriggerNameLabel = nullptr;
+    QLabel *m_ruleFileTriggerDescriptionLabel = nullptr;
+    QLabel *m_ruleFileTriggerPathLabel = nullptr;
+    QLabel *m_ruleFileTriggerCaretLabel = nullptr;
     QPlainTextEdit *m_editor = nullptr;
 
     QLabel *m_settingsPageStatusLabel = nullptr;
@@ -163,10 +183,12 @@ private:
 
     QLabel *m_footerApiValue = nullptr;
     QLabel *m_footerLatencyValue = nullptr;
-    QLabel *m_footerModeValue = nullptr;
-    QLabel *m_footerIpValue = nullptr;
+    QLabel *m_footerTunValue = nullptr;
+    QLabel *m_footerDnsValue = nullptr;
     QLabel *m_footerReloadValue = nullptr;
     QLabel *m_recentActionLabel = nullptr;
+    QWidget *m_selectorPopup = nullptr;
+    QWidget *m_selectorPopupTrigger = nullptr;
 
     bool m_trayAvailable = false;
 };

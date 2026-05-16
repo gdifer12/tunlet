@@ -1,26 +1,33 @@
 #include "ui/main_window.hpp"
 
-#include <QComboBox>
+#include <QAbstractButton>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QEvent>
 #include <QFileInfo>
 #include <QFrame>
+#include <QGuiApplication>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QIcon>
+#include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
-#include <QListWidget>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
+#include <QScrollBar>
+#include <QScreen>
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QStyle>
+#include <QToolButton>
+#include <QTimer>
 #include <QTextDocument>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -97,7 +104,7 @@ QWidget *buildSummaryItem(QWidget *parent, const QString &labelText, QLabel **va
     item->setObjectName("summaryItem");
 
     auto *layout = new QVBoxLayout(item);
-    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setContentsMargins(12, 10, 12, 10);
     layout->setSpacing(4);
 
     auto *label = new QLabel(labelText, item);
@@ -129,14 +136,6 @@ QLabel *buildKeyValueRow(QGridLayout *layout, int row, const QString &key, QWidg
     layout->addWidget(keyLabel, row, 0, Qt::AlignTop);
     layout->addWidget(valueLabel, row, 1);
     return valueLabel;
-}
-
-QLabel *buildTitleDot(QWidget *parent, const QString &tone) {
-    auto *dot = new QLabel(parent);
-    dot->setObjectName("titleDot");
-    dot->setProperty("tone", tone);
-    dot->setFixedSize(10, 10);
-    return dot;
 }
 
 }  // namespace
@@ -180,15 +179,76 @@ void MainWindow::showAndRaise() {
     activateWindow();
 }
 
+bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
+    if (m_selectorPopup &&
+        (watched == m_selectorPopup || qobject_cast<QAbstractButton *>(watched) != nullptr) &&
+        event->type() == QEvent::KeyPress) {
+        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        const auto buttons =
+            m_selectorPopup->findChildren<QAbstractButton *>(QString(), Qt::FindDirectChildrenOnly);
+        if (buttons.isEmpty()) {
+            if (keyEvent->key() == Qt::Key_Escape) {
+                closeSelectorPopup();
+                return true;
+            }
+            return QMainWindow::eventFilter(watched, event);
+        }
+
+        auto *currentButton = qobject_cast<QAbstractButton *>(watched);
+        if (!currentButton) {
+            currentButton = qobject_cast<QAbstractButton *>(m_selectorPopup->focusWidget());
+        }
+
+        int currentIndex = buttons.indexOf(currentButton);
+        if (currentIndex < 0) {
+            currentIndex = 0;
+        }
+
+        switch (keyEvent->key()) {
+        case Qt::Key_Escape:
+            closeSelectorPopup();
+            return true;
+        case Qt::Key_Down:
+        case Qt::Key_Right:
+            buttons.at((currentIndex + 1) % buttons.size())->setFocus();
+            return true;
+        case Qt::Key_Up:
+        case Qt::Key_Left:
+            buttons.at((currentIndex - 1 + buttons.size()) % buttons.size())->setFocus();
+            return true;
+        case Qt::Key_Home:
+            buttons.first()->setFocus();
+            return true;
+        case Qt::Key_End:
+            buttons.last()->setFocus();
+            return true;
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+        case Qt::Key_Space:
+            if (currentIndex >= 0 && currentIndex < buttons.size()) {
+                buttons.at(currentIndex)->click();
+                return true;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
+    return QMainWindow::eventFilter(watched, event);
+}
+
 void MainWindow::resizeEvent(QResizeEvent *event) {
     QMainWindow::resizeEvent(event);
+    closeSelectorPopup();
     updateWindowSizeLabel();
+    refreshRecentActionLabel();
 }
 
 void MainWindow::buildUi(bool trayAvailable) {
     setWindowTitle("tunlet");
-    resize(760, 760);
-    setMinimumSize(680, 620);
+    resize(700, 700);
+    setMinimumSize(640, 620);
 
     auto *root = new QWidget(this);
     root->setObjectName("appRoot");
@@ -214,7 +274,7 @@ void MainWindow::buildUi(bool trayAvailable) {
     auto *contentLayout = new QVBoxLayout(contentShell);
     contentLayout->setContentsMargins(0, 0, 0, 0);
     contentLayout->setSpacing(0);
-    contentLayout->addWidget(buildTopTabs());
+    contentLayout->addWidget(buildTopRuntimeStrip());
 
     m_pages = new QStackedWidget(contentShell);
     m_pages->setObjectName("contentPages");
@@ -223,6 +283,8 @@ void MainWindow::buildUi(bool trayAvailable) {
     m_pages->addWidget(buildSettingsInfoPage());
     contentLayout->addWidget(m_pages, 1);
     contentLayout->addWidget(buildHealthStrip());
+    contentLayout->addWidget(buildBottomNav());
+    contentLayout->addWidget(buildBottomStatusLine());
     bodyLayout->addWidget(contentShell, 1);
 
     windowLayout->addWidget(windowBody, 1);
@@ -264,20 +326,11 @@ QWidget *MainWindow::buildWindowTitleBar() {
     layout->setContentsMargins(18, 14, 18, 14);
     layout->setSpacing(16);
 
-    auto *controls = new QWidget(titleBar);
-    auto *controlsLayout = new QHBoxLayout(controls);
-    controlsLayout->setContentsMargins(0, 0, 0, 0);
-    controlsLayout->setSpacing(8);
-    controlsLayout->addWidget(buildTitleDot(controls, "danger"));
-    controlsLayout->addWidget(buildTitleDot(controls, "warn"));
-    controlsLayout->addWidget(buildTitleDot(controls, "ok"));
-    layout->addWidget(controls, 0, Qt::AlignVCenter);
-
     auto *titleMeta = new QVBoxLayout();
     titleMeta->setSpacing(2);
     auto *title = new QLabel("tunlet", titleBar);
     title->setObjectName("titleBarTitle");
-    auto *subtitle = new QLabel("Local Clash runtime controller", titleBar);
+    auto *subtitle = new QLabel("Wayland-first local Clash runtime controller", titleBar);
     subtitle->setObjectName("monoNote");
     titleMeta->addWidget(title);
     titleMeta->addWidget(subtitle);
@@ -298,18 +351,17 @@ QWidget *MainWindow::buildWindowTitleBar() {
     return titleBar;
 }
 
-QWidget *MainWindow::buildTopTabs() {
-    auto *tabsShell = new QWidget(this);
-    tabsShell->setObjectName("topTabs");
+QWidget *MainWindow::buildTopRuntimeStrip() {
+    auto *shell = new QWidget(this);
+    shell->setObjectName("topRuntimeStrip");
+    auto *layout = new QVBoxLayout(shell);
+    layout->setContentsMargins(16, 12, 16, 10);
+    layout->setSpacing(0);
 
-    auto *layout = new QVBoxLayout(tabsShell);
-    layout->setContentsMargins(16, 14, 16, 10);
-    layout->setSpacing(10);
-
-    auto *runtimeRow = new QWidget(tabsShell);
+    auto *runtimeRow = new QWidget(shell);
     runtimeRow->setObjectName("topRuntime");
     auto *runtimeLayout = new QHBoxLayout(runtimeRow);
-    runtimeLayout->setContentsMargins(0, 0, 0, 0);
+    runtimeLayout->setContentsMargins(14, 12, 14, 12);
     runtimeLayout->setSpacing(12);
 
     auto *runtimeCopy = new QVBoxLayout();
@@ -327,31 +379,7 @@ QWidget *MainWindow::buildTopTabs() {
     m_topRuntimeStatusLabel->setObjectName("statusPill");
     runtimeLayout->addWidget(m_topRuntimeStatusLabel, 0, Qt::AlignTop);
     layout->addWidget(runtimeRow);
-
-    auto *tabRow = new QWidget(tabsShell);
-    auto *tabLayout = new QHBoxLayout(tabRow);
-    tabLayout->setContentsMargins(0, 0, 0, 0);
-    tabLayout->setSpacing(8);
-    const QVector<QPair<QString, QString>> sections = {
-        {"Main", "Mode + health"},
-        {"Rules", "Local JSON edit"},
-        {"Settings / Info", "Versions + paths"},
-    };
-    for (int index = 0; index < sections.size(); ++index) {
-        auto *button = new QPushButton(QString("%1\n%2").arg(sections.at(index).first, sections.at(index).second), tabRow);
-        button->setObjectName("topTabButton");
-        button->setProperty("active", false);
-        button->setMinimumHeight(56);
-        button->setCursor(Qt::PointingHandCursor);
-        m_navButtons.push_back(button);
-        connect(button, &QPushButton::clicked, this, [this, index]() {
-            setCurrentPage(index);
-        });
-        tabLayout->addWidget(button, 1);
-    }
-    layout->addWidget(tabRow);
-
-    return tabsShell;
+    return shell;
 }
 
 QWidget *MainWindow::buildHealthStrip() {
@@ -359,19 +387,19 @@ QWidget *MainWindow::buildHealthStrip() {
     strip->setObjectName("healthStrip");
 
     auto *layout = new QHBoxLayout(strip);
-    layout->setContentsMargins(18, 14, 18, 14);
-    layout->setSpacing(14);
+    layout->setContentsMargins(12, 8, 12, 8);
+    layout->setSpacing(0);
 
     auto *grid = new QGridLayout();
-    grid->setHorizontalSpacing(10);
-    grid->setVerticalSpacing(10);
+    grid->setHorizontalSpacing(6);
+    grid->setVerticalSpacing(6);
 
-    const QStringList labels = {"Clash API", "Latency", "Mode", "Public IP", "Last refresh"};
+    const QStringList labels = {"Clash API", "Latency", "TUN", "DNS", "Last reload"};
     QLabel **targets[] = {
         &m_footerApiValue,
         &m_footerLatencyValue,
-        &m_footerModeValue,
-        &m_footerIpValue,
+        &m_footerTunValue,
+        &m_footerDnsValue,
         &m_footerReloadValue,
     };
 
@@ -394,25 +422,69 @@ QWidget *MainWindow::buildHealthStrip() {
     auto *gridHost = new QWidget(strip);
     gridHost->setLayout(grid);
     layout->addWidget(gridHost, 1);
-
-    auto *actionLog = new QWidget(strip);
-    auto *actionLayout = new QVBoxLayout(actionLog);
-    actionLayout->setContentsMargins(0, 0, 0, 0);
-    actionLayout->setSpacing(4);
-    auto *meta = new QLabel("Recent action", actionLog);
-    meta->setObjectName("metaLabel");
-    m_recentActionLabel = new QLabel("Ready", actionLog);
-    m_recentActionLabel->setObjectName("healthValue");
-    m_recentActionLabel->setWordWrap(true);
-    actionLayout->addWidget(meta);
-    actionLayout->addWidget(m_recentActionLabel);
-    layout->addWidget(actionLog, 0, Qt::AlignRight | Qt::AlignVCenter);
-
     return strip;
 }
 
+QWidget *MainWindow::buildBottomNav() {
+    auto *nav = new QWidget(this);
+    nav->setObjectName("bottomNav");
+
+    auto *layout = new QHBoxLayout(nav);
+    layout->setContentsMargins(12, 5, 12, 5);
+    layout->setSpacing(6);
+
+    const struct {
+        QString title;
+        QString iconPath;
+    } sections[] = {
+        {"Main", ":/icons/nav-main.svg"},
+        {"Rules", ":/icons/nav-rules.svg"},
+        {"Settings", ":/icons/nav-settings.svg"},
+    };
+
+    constexpr int sectionCount = 3;
+    for (int index = 0; index < sectionCount; ++index) {
+        auto *button = new QToolButton(nav);
+        button->setObjectName("navTabButton");
+        button->setProperty("active", false);
+        button->setText(sections[index].title);
+        button->setIcon(QIcon(sections[index].iconPath));
+        button->setIconSize(QSize(18, 18));
+        button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+        button->setAutoRaise(false);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        m_navButtons.push_back(button);
+        connect(button, &QToolButton::clicked, this, [this, index]() {
+            setCurrentPage(index);
+        });
+        layout->addWidget(button, 1);
+    }
+
+    return nav;
+}
+
+QWidget *MainWindow::buildBottomStatusLine() {
+    auto *line = new QWidget(this);
+    line->setObjectName("bottomStatusLine");
+    auto *layout = new QHBoxLayout(line);
+    layout->setContentsMargins(14, 4, 14, 5);
+    layout->setSpacing(6);
+
+    auto *meta = new QLabel("Recent action", line);
+    meta->setObjectName("metaLabel");
+    m_recentActionLabel = new QLabel("Ready", line);
+    m_recentActionLabel->setObjectName("recentActionValue");
+    m_recentActionLabel->setWordWrap(false);
+
+    layout->addWidget(meta, 0, Qt::AlignVCenter);
+    layout->addWidget(m_recentActionLabel, 1, Qt::AlignVCenter);
+    refreshRecentActionLabel();
+    return line;
+}
+
 QWidget *MainWindow::buildDashboardPage() {
-    auto *page = new QWidget(this);
+    auto *page = new QWidget();
     page->setObjectName("panelPage");
     auto *pageLayout = new QVBoxLayout(page);
     pageLayout->setContentsMargins(18, 18, 18, 18);
@@ -466,40 +538,34 @@ QWidget *MainWindow::buildDashboardPage() {
     selectorHeadLayout->addWidget(selectorNote, 0, Qt::AlignTop);
     selectorLayout->addWidget(selectorHead);
 
-    auto *modeMeta = new QLabel("Current mode", selectorCard);
-    modeMeta->setObjectName("summaryKey");
-    m_currentProfileLabel = new QLabel("Unknown", selectorCard);
-    m_currentProfileLabel->setObjectName("heroMode");
-    m_modeChipLabel = new QLabel("Mode value: unknown", selectorCard);
-    m_modeChipLabel->setObjectName("summarySub");
-    selectorLayout->addWidget(modeMeta);
-    selectorLayout->addWidget(m_currentProfileLabel);
-    selectorLayout->addWidget(m_modeChipLabel);
-
-    m_profileCombo = new QComboBox(selectorCard);
-    m_profileCombo->setObjectName("modeProfileCombo");
-    m_profileCombo->setMinimumHeight(56);
-    connect(m_profileCombo, qOverload<int>(&QComboBox::activated), this, [this](int index) {
-        if (!m_profileCombo || index < 0) {
-            return;
-        }
-
-        const QString profileName = m_profileCombo->itemData(index).toString();
-        if (profileName.isEmpty()) {
-            return;
-        }
-
-        setSelectedProfileName(profileName);
-        if (!m_lastStatus.busy && profileName != m_lastStatus.currentProfileName) {
-            applySelectedModeProfile();
-        }
-    });
-    selectorLayout->addWidget(m_profileCombo);
-
-    m_profileDescriptionLabel = new QLabel("Choose a profile to switch immediately.", selectorCard);
-    m_profileDescriptionLabel->setObjectName("cardSubtitle");
-    m_profileDescriptionLabel->setWordWrap(true);
-    selectorLayout->addWidget(m_profileDescriptionLabel);
+    m_modeTriggerButton = new QPushButton(selectorCard);
+    m_modeTriggerButton->setObjectName("selectorTrigger");
+    m_modeTriggerButton->setProperty("open", false);
+    m_modeTriggerButton->setMinimumHeight(78);
+    m_modeTriggerButton->setCursor(Qt::PointingHandCursor);
+    auto *modeTriggerLayout = new QHBoxLayout(m_modeTriggerButton);
+    modeTriggerLayout->setContentsMargins(14, 12, 14, 12);
+    modeTriggerLayout->setSpacing(12);
+    auto *modeTriggerCopy = new QVBoxLayout();
+    modeTriggerCopy->setSpacing(4);
+    auto *modeTriggerKey = new QLabel("Current mode", m_modeTriggerButton);
+    modeTriggerKey->setObjectName("summaryKey");
+    m_modeTriggerValueLabel = new QLabel("Unknown", m_modeTriggerButton);
+    m_modeTriggerValueLabel->setObjectName("selectorTriggerValue");
+    m_modeTriggerSubLabel = new QLabel("Choose a profile to switch immediately.", m_modeTriggerButton);
+    m_modeTriggerSubLabel->setObjectName("selectorTriggerSub");
+    m_modeTriggerSubLabel->setWordWrap(true);
+    modeTriggerCopy->addWidget(modeTriggerKey);
+    modeTriggerCopy->addWidget(m_modeTriggerValueLabel);
+    modeTriggerCopy->addWidget(m_modeTriggerSubLabel);
+    modeTriggerLayout->addLayout(modeTriggerCopy, 1);
+    m_modeTriggerCaretLabel = new QLabel("▾", m_modeTriggerButton);
+    m_modeTriggerCaretLabel->setObjectName("selectorTriggerCaret");
+    modeTriggerLayout->addWidget(m_modeTriggerCaretLabel, 0, Qt::AlignCenter);
+    connect(m_modeTriggerButton, &QPushButton::clicked, this, &MainWindow::openModePopup);
+    selectorLayout->addWidget(m_modeTriggerButton);
+    m_currentProfileLabel = m_modeTriggerValueLabel;
+    m_profileDescriptionLabel = m_modeTriggerSubLabel;
 
     auto *modeSummaryGrid = new QGridLayout();
     modeSummaryGrid->setHorizontalSpacing(10);
@@ -564,33 +630,44 @@ QWidget *MainWindow::buildDashboardPage() {
     auto *connectionLayout = new QVBoxLayout(connectionCard);
     connectionLayout->setContentsMargins(18, 18, 18, 18);
     connectionLayout->setSpacing(14);
+    auto *connectionHead = new QWidget(connectionCard);
+    auto *connectionHeadLayout = new QHBoxLayout(connectionHead);
+    connectionHeadLayout->setContentsMargins(0, 0, 0, 0);
+    connectionHeadLayout->setSpacing(12);
+    auto *connectionCopy = new QVBoxLayout();
+    connectionCopy->setSpacing(4);
     auto *connectionTitle = new QLabel("Connection info", connectionCard);
     connectionTitle->setObjectName("cardTitleStrong");
     auto *connectionSubtitle = new QLabel("Technical details still readable in a narrow window", connectionCard);
     connectionSubtitle->setObjectName("cardSubtitle");
-    connectionLayout->addWidget(connectionTitle);
-    connectionLayout->addWidget(connectionSubtitle);
+    connectionCopy->addWidget(connectionTitle);
+    connectionCopy->addWidget(connectionSubtitle);
+    connectionHeadLayout->addLayout(connectionCopy, 1);
+    auto *densityLabel = new QLabel("Balanced density", connectionHead);
+    densityLabel->setObjectName("metaChip");
+    connectionHeadLayout->addWidget(densityLabel, 0, Qt::AlignTop);
+    connectionLayout->addWidget(connectionHead);
 
     auto *metricGrid = new QGridLayout();
     metricGrid->setHorizontalSpacing(10);
     metricGrid->setVerticalSpacing(10);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Clash API", &m_connectionEndpointValue), 0, 0);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Diagnostics", &m_connectionDiagnosticsValue), 0, 1);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Public IPs", &m_connectionIpValue), 1, 0);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Location", &m_connectionLocationValue), 1, 1);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "TUN interface", &m_connectionTunValue), 0, 1);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "DNS mode", &m_connectionDnsValue), 1, 0);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Delay check", &m_connectionDiagnosticsValue), 1, 1);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Routing summary", &m_connectionRoutingValue), 2, 0);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Config root", &m_configRootValue), 2, 1);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Controller address", &m_controllerAddressValue), 3, 0);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Rules directory", &m_rulesDirectoryValue), 3, 1);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Profile hint", &m_profileHintValue), 4, 0);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Supported modes", &m_connectionModesValue), 4, 1);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Profile hint", &m_profileHintValue), 4, 0, 1, 2);
     connectionLayout->addLayout(metricGrid);
     pageLayout->addWidget(connectionCard);
-    return page;
+    pageLayout->addStretch(1);
+    return wrapPageInScrollArea(page, "dashboardPageScrollArea");
 }
 
 QWidget *MainWindow::buildRuleSetsPage() {
-    auto *page = new QWidget(this);
+    auto *page = new QWidget();
     page->setObjectName("panelPage");
     auto *pageLayout = new QVBoxLayout(page);
     pageLayout->setContentsMargins(18, 18, 18, 18);
@@ -624,23 +701,41 @@ QWidget *MainWindow::buildRuleSetsPage() {
     auto *selectorLayout = new QVBoxLayout(selectorCard);
     selectorLayout->setContentsMargins(18, 18, 18, 18);
     selectorLayout->setSpacing(12);
-    auto *selectorTitle = new QLabel("Rule file", selectorCard);
-    selectorTitle->setObjectName("cardTitleStrong");
-    auto *selectorSubtitle = new QLabel("Choose the active local JSON file for validation and save control", selectorCard);
-    selectorSubtitle->setObjectName("cardSubtitle");
-    selectorSubtitle->setWordWrap(true);
-    selectorLayout->addWidget(selectorTitle);
-    selectorLayout->addWidget(selectorSubtitle);
-
-    m_ruleFileCombo = new QComboBox(selectorCard);
-    m_ruleFileCombo->setObjectName("ruleFileCombo");
-    m_ruleFileCombo->setMinimumHeight(60);
-    connect(m_ruleFileCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int index) {
-        if (index >= 0) {
-            onRuleFileSelectionChanged();
-        }
-    });
-    selectorLayout->addWidget(m_ruleFileCombo);
+    auto *selectorField = new QWidget(selectorCard);
+    auto *selectorFieldLayout = new QVBoxLayout(selectorField);
+    selectorFieldLayout->setContentsMargins(0, 0, 0, 0);
+    selectorFieldLayout->setSpacing(8);
+    auto *selectorTitle = new QLabel("Rule file", selectorField);
+    selectorTitle->setObjectName("summaryKey");
+    selectorFieldLayout->addWidget(selectorTitle);
+    m_ruleFileTriggerButton = new QPushButton(selectorCard);
+    m_ruleFileTriggerButton->setObjectName("selectorTrigger");
+    m_ruleFileTriggerButton->setProperty("open", false);
+    m_ruleFileTriggerButton->setMinimumHeight(88);
+    m_ruleFileTriggerButton->setCursor(Qt::PointingHandCursor);
+    auto *ruleTriggerLayout = new QHBoxLayout(m_ruleFileTriggerButton);
+    ruleTriggerLayout->setContentsMargins(14, 12, 14, 12);
+    ruleTriggerLayout->setSpacing(12);
+    auto *ruleTriggerCopy = new QVBoxLayout();
+    ruleTriggerCopy->setSpacing(4);
+    m_ruleFileTriggerNameLabel = new QLabel("No file selected", m_ruleFileTriggerButton);
+    m_ruleFileTriggerNameLabel->setObjectName("selectorTriggerValue");
+    m_ruleFileTriggerDescriptionLabel = new QLabel("Choose the active local JSON file.", m_ruleFileTriggerButton);
+    m_ruleFileTriggerDescriptionLabel->setObjectName("selectorTriggerSub");
+    m_ruleFileTriggerDescriptionLabel->setWordWrap(true);
+    m_ruleFileTriggerPathLabel = new QLabel("", m_ruleFileTriggerButton);
+    m_ruleFileTriggerPathLabel->setObjectName("monoNote");
+    m_ruleFileTriggerPathLabel->setWordWrap(true);
+    ruleTriggerCopy->addWidget(m_ruleFileTriggerNameLabel);
+    ruleTriggerCopy->addWidget(m_ruleFileTriggerDescriptionLabel);
+    ruleTriggerCopy->addWidget(m_ruleFileTriggerPathLabel);
+    ruleTriggerLayout->addLayout(ruleTriggerCopy, 1);
+    m_ruleFileTriggerCaretLabel = new QLabel("▾", m_ruleFileTriggerButton);
+    m_ruleFileTriggerCaretLabel->setObjectName("selectorTriggerCaret");
+    ruleTriggerLayout->addWidget(m_ruleFileTriggerCaretLabel, 0, Qt::AlignCenter);
+    connect(m_ruleFileTriggerButton, &QPushButton::clicked, this, &MainWindow::openRuleFilePopup);
+    selectorFieldLayout->addWidget(m_ruleFileTriggerButton);
+    selectorLayout->addWidget(selectorField);
 
     auto *fileMeta = new QWidget(selectorCard);
     fileMeta->setObjectName("fileMetaCard");
@@ -734,18 +829,23 @@ QWidget *MainWindow::buildRuleSetsPage() {
     m_editor->setObjectName("ruleEditor");
     m_editor->setLineWrapMode(QPlainTextEdit::NoWrap);
     connect(m_editor, &QPlainTextEdit::textChanged, this, &MainWindow::onRuleEditorTextChanged);
+    connect(m_editor->verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
+        closeSelectorPopup();
+    });
     frameLayout->addWidget(m_ruleLineNumbersLabel);
     frameLayout->addWidget(m_editor, 1);
+    editorFrame->setMinimumHeight(320);
     editorLayout->addWidget(editorFrame, 1);
+    editorCard->setMinimumHeight(460);
     pageLayout->addWidget(editorCard, 1);
-    return page;
+    return wrapPageInScrollArea(page, "rulesPageScrollArea");
 }
 
 QWidget *MainWindow::buildSettingsInfoPage() {
-    auto *page = new QWidget(this);
+    auto *page = new QWidget();
     page->setObjectName("panelPage");
     auto *pageLayout = new QVBoxLayout(page);
-    pageLayout->setContentsMargins(22, 22, 22, 22);
+    pageLayout->setContentsMargins(18, 18, 18, 18);
     pageLayout->setSpacing(16);
 
     auto *panelHead = new QWidget(page);
@@ -771,17 +871,7 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     headLayout->addWidget(m_settingsPageStatusLabel, 0, Qt::AlignTop);
     pageLayout->addWidget(panelHead);
 
-    auto *scrollArea = new QScrollArea(page);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-
-    auto *content = new QWidget(scrollArea);
-    auto *contentLayout = new QVBoxLayout(content);
-    contentLayout->setContentsMargins(0, 0, 0, 0);
-    contentLayout->setSpacing(16);
-
-    auto *appInfoCard = new QWidget(content);
+    auto *appInfoCard = new QWidget(page);
     appInfoCard->setObjectName("card");
     auto *appInfoLayout = new QVBoxLayout(appInfoCard);
     appInfoLayout->setContentsMargins(18, 18, 18, 18);
@@ -804,9 +894,9 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     m_infoProfilesValue = buildKeyValueRow(appInfoGrid, 5, "Profiles", appInfoCard);
     m_infoThemeValue = buildKeyValueRow(appInfoGrid, 6, "Theme source", appInfoCard);
     appInfoLayout->addLayout(appInfoGrid);
-    contentLayout->addWidget(appInfoCard);
+    pageLayout->addWidget(appInfoCard);
 
-    auto *stateCard = new QWidget(content);
+    auto *stateCard = new QWidget(page);
     stateCard->setObjectName("card");
     auto *stateLayout = new QVBoxLayout(stateCard);
     stateLayout->setContentsMargins(18, 18, 18, 18);
@@ -829,9 +919,9 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     m_stateTrafficValue = buildKeyValueRow(stateGrid, 5, "Traffic", stateCard);
     m_stateModeListValue = buildKeyValueRow(stateGrid, 6, "Supported modes", stateCard);
     stateLayout->addLayout(stateGrid);
-    contentLayout->addWidget(stateCard);
+    pageLayout->addWidget(stateCard);
 
-    auto *editorCard = new QWidget(content);
+    auto *editorCard = new QWidget(page);
     editorCard->setObjectName("card");
     editorCard->setMinimumHeight(520);
     auto *editorLayout = new QVBoxLayout(editorCard);
@@ -882,14 +972,31 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     m_settingsEditor = new QPlainTextEdit(editorCard);
     m_settingsEditor->setObjectName("settingsEditor");
     m_settingsEditor->setLineWrapMode(QPlainTextEdit::NoWrap);
-    m_settingsEditor->setMinimumHeight(360);
+    m_settingsEditor->setMinimumHeight(420);
     connect(m_settingsEditor, &QPlainTextEdit::textChanged, this, &MainWindow::onSettingsEditorTextChanged);
+    connect(m_settingsEditor->verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
+        closeSelectorPopup();
+    });
     editorLayout->addWidget(m_settingsEditor, 1);
-    contentLayout->addWidget(editorCard, 1);
+    pageLayout->addWidget(editorCard);
+    pageLayout->addStretch(1);
+    return wrapPageInScrollArea(page, "settingsPageScrollArea");
+}
 
+QScrollArea *MainWindow::wrapPageInScrollArea(QWidget *content, const QString &objectName) {
+    auto *scrollArea = new QScrollArea(this);
+    scrollArea->setObjectName(objectName);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->viewport()->setObjectName("pageViewport");
     scrollArea->setWidget(content);
-    pageLayout->addWidget(scrollArea, 1);
-    return page;
+
+    connect(scrollArea->verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
+        closeSelectorPopup();
+    });
+
+    return scrollArea;
 }
 
 void MainWindow::setCurrentPage(int index) {
@@ -897,6 +1004,7 @@ void MainWindow::setCurrentPage(int index) {
         return;
     }
 
+    closeSelectorPopup();
     m_pages->setCurrentIndex(index);
     for (int buttonIndex = 0; buttonIndex < m_navButtons.size(); ++buttonIndex) {
         if (!m_navButtons.at(buttonIndex)) {
@@ -923,18 +1031,6 @@ void MainWindow::applyConfig(const config::AppConfig &config) {
 void MainWindow::populateModeProfiles() {
     const QString preferredSelection = m_selectedProfileName.isEmpty() ? m_lastStatus.currentProfileName : m_selectedProfileName;
 
-    if (m_profileCombo) {
-        QSignalBlocker blocker(m_profileCombo);
-        m_profileCombo->clear();
-        for (const auto &profile : m_modeController->profiles()) {
-            m_profileCombo->addItem(displayModeName(profile.name), profile.name);
-            const int index = m_profileCombo->count() - 1;
-            m_profileCombo->setItemData(index, profile.mode, Qt::UserRole + 1);
-            m_profileCombo->setItemData(index, profile.desc, Qt::ToolTipRole);
-        }
-        m_profileCombo->setEnabled(m_profileCombo->count() > 0 && !m_lastStatus.busy);
-    }
-
     if (!preferredSelection.isEmpty() && hasProfile(preferredSelection)) {
         setSelectedProfileName(preferredSelection);
     } else if (hasProfile(m_lastStatus.currentProfileName)) {
@@ -949,8 +1045,7 @@ void MainWindow::populateModeProfiles() {
 }
 
 void MainWindow::populateRuleFiles() {
-    const auto *currentFile = selectedRuleFile();
-    const QString currentPath = currentFile ? currentFile->path : QString{};
+    const QString currentPath = m_selectedRuleFilePath;
 
     m_ruleFiles = {
         {"force-proxy", m_config.ruleSets.forceProxyPath, "Default force-proxy rule-set"},
@@ -963,37 +1058,23 @@ void MainWindow::populateRuleFiles() {
         m_ruleFiles.push_back({extra.name, extra.path, extra.description});
     }
 
-    if (!m_ruleFileCombo) {
-        return;
+    int targetRow = -1;
+    for (int row = 0; row < m_ruleFiles.size(); ++row) {
+        if (m_ruleFiles.at(row).path == currentPath) {
+            targetRow = row;
+            break;
+        }
     }
 
-    int targetRow = -1;
-    {
-        QSignalBlocker blocker(m_ruleFileCombo);
-        m_ruleFileCombo->clear();
-        for (const auto &ruleFile : m_ruleFiles) {
-            m_ruleFileCombo->addItem(ruleFile.name, ruleFile.path);
-        }
-
-        for (int row = 0; row < m_ruleFiles.size(); ++row) {
-            if (m_ruleFiles.at(row).path == currentPath) {
-                targetRow = row;
-                break;
-            }
-        }
-
-        if (targetRow < 0 && !m_ruleFiles.isEmpty()) {
-            targetRow = 0;
-        }
-
-        if (targetRow >= 0) {
-            m_ruleFileCombo->setCurrentIndex(targetRow);
-        }
+    if (targetRow < 0 && !m_ruleFiles.isEmpty()) {
+        targetRow = 0;
     }
 
     if (targetRow >= 0) {
+        m_selectedRuleFilePath = m_ruleFiles.at(targetRow).path;
         onRuleFileSelectionChanged();
     } else {
+        updateRuleFileTrigger();
         if (m_editor) {
             QSignalBlocker editorBlocker(m_editor);
             m_editor->clear();
@@ -1010,17 +1091,6 @@ void MainWindow::setSelectedProfileName(const QString &profileName) {
     }
 
     m_selectedProfileName = profileName;
-    if (m_profileCombo) {
-        QSignalBlocker blocker(m_profileCombo);
-        int selectedIndex = -1;
-        for (int index = 0; index < m_profileCombo->count(); ++index) {
-            if (m_profileCombo->itemData(index).toString() == profileName) {
-                selectedIndex = index;
-                break;
-            }
-        }
-        m_profileCombo->setCurrentIndex(selectedIndex);
-    }
     updateModeSelectionUi();
 }
 
@@ -1038,16 +1108,17 @@ QString MainWindow::selectedModeProfileName() const {
 }
 
 const MainWindow::NamedRuleFile *MainWindow::selectedRuleFile() const {
-    if (!m_ruleFileCombo) {
+    if (m_selectedRuleFilePath.isEmpty()) {
         return nullptr;
     }
 
-    const int row = m_ruleFileCombo->currentIndex();
-    if (row < 0 || row >= m_ruleFiles.size()) {
-        return nullptr;
+    for (const auto &ruleFile : m_ruleFiles) {
+        if (ruleFile.path == m_selectedRuleFilePath) {
+            return &ruleFile;
+        }
     }
 
-    return &m_ruleFiles.at(row);
+    return nullptr;
 }
 
 void MainWindow::updateModeSelectionUi() {
@@ -1068,11 +1139,15 @@ void MainWindow::updateModeSelectionUi() {
         profileDescription += QString("\nSupported backend modes: %1").arg(joinOrUnknown(m_lastStatus.supportedModes));
     }
 
+    if (m_modeTriggerValueLabel) {
+        const QString displayName = m_selectedProfileName.isEmpty() ? "Unknown" : displayModeName(m_selectedProfileName);
+        m_modeTriggerValueLabel->setText(displayName);
+    }
     if (m_profileDescriptionLabel) {
         m_profileDescriptionLabel->setText(profileDescription);
     }
-    if (m_profileCombo) {
-        m_profileCombo->setEnabled(m_profileCombo->count() > 0 && !m_lastStatus.busy);
+    if (m_modeTriggerButton) {
+        m_modeTriggerButton->setEnabled(!m_modeController->profiles().isEmpty() && !m_lastStatus.busy);
     }
 }
 
@@ -1097,9 +1172,284 @@ void MainWindow::updateRuleLineNumbers() {
     m_ruleLineNumbersLabel->setText(lines.join('\n'));
 }
 
+void MainWindow::refreshRecentActionLabel() {
+    if (!m_recentActionLabel) {
+        return;
+    }
+
+    m_recentActionLabel->setToolTip(m_recentActionText);
+    const int availableWidth = qMax(120, m_recentActionLabel->width() > 0 ? m_recentActionLabel->width() : width() / 2);
+    const QString visibleText =
+        m_recentActionLabel->fontMetrics().elidedText(m_recentActionText, Qt::ElideRight, availableWidth);
+    m_recentActionLabel->setText(visibleText);
+}
+
+void MainWindow::closeSelectorPopup() {
+    if (m_selectorPopupTrigger) {
+        m_selectorPopupTrigger->setProperty("open", false);
+        repolish(m_selectorPopupTrigger);
+    }
+
+    if (m_selectorPopup) {
+        auto *popup = m_selectorPopup;
+        m_selectorPopup = nullptr;
+        m_selectorPopupTrigger = nullptr;
+        popup->close();
+        popup->deleteLater();
+        return;
+    }
+
+    m_selectorPopupTrigger = nullptr;
+}
+
+void MainWindow::openModePopup() {
+    if (!m_modeTriggerButton || m_modeController->profiles().isEmpty() || m_lastStatus.busy) {
+        return;
+    }
+
+    if (m_selectorPopup && m_selectorPopupTrigger == m_modeTriggerButton) {
+        closeSelectorPopup();
+        return;
+    }
+
+    closeSelectorPopup();
+
+    auto *popup = new QFrame(this, Qt::Popup | Qt::FramelessWindowHint);
+    popup->setObjectName("selectorPopup");
+    popup->setFocusPolicy(Qt::StrongFocus);
+    popup->installEventFilter(this);
+
+    auto *layout = new QVBoxLayout(popup);
+    layout->setContentsMargins(8, 8, 8, 8);
+    layout->setSpacing(6);
+    layout->setSizeConstraint(QLayout::SetMinimumSize);
+
+    int activeIndex = 0;
+    for (int index = 0; index < m_modeController->profiles().size(); ++index) {
+        const auto &profile = m_modeController->profiles().at(index);
+        auto *button = new QPushButton(popup);
+        button->setObjectName("selectorOption");
+        button->setProperty("active", profile.name == m_selectedProfileName);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setMinimumHeight(64);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        button->installEventFilter(this);
+
+        auto *buttonLayout = new QVBoxLayout(button);
+        buttonLayout->setContentsMargins(12, 10, 12, 10);
+        buttonLayout->setSpacing(2);
+        buttonLayout->setSizeConstraint(QLayout::SetMinimumSize);
+
+        auto *title = new QLabel(displayModeName(profile.name), button);
+        title->setObjectName("selectorOptionTitle");
+        auto *subtitle =
+            new QLabel(profile.desc.isEmpty() ? QString("Backend mode: %1").arg(profile.mode) : profile.desc, button);
+        subtitle->setObjectName("selectorOptionSub");
+        auto *meta = new QLabel(QString("Backend mode: %1").arg(profile.mode), button);
+        meta->setObjectName("selectorOptionMeta");
+        buttonLayout->addWidget(title);
+        buttonLayout->addWidget(subtitle);
+        buttonLayout->addWidget(meta);
+
+        connect(button, &QPushButton::clicked, this, [this, profileName = profile.name]() {
+            closeSelectorPopup();
+            setSelectedProfileName(profileName);
+            if (!m_lastStatus.busy && profileName != m_lastStatus.currentProfileName) {
+                applySelectedModeProfile();
+            }
+        });
+
+        if (profile.name == m_selectedProfileName) {
+            activeIndex = index;
+        }
+
+        layout->addWidget(button);
+    }
+
+    m_selectorPopup = popup;
+    m_selectorPopupTrigger = m_modeTriggerButton;
+    m_selectorPopupTrigger->setProperty("open", true);
+    repolish(m_selectorPopupTrigger);
+    popup->show();
+    positionSelectorPopup(m_modeTriggerButton);
+
+    const auto buttons =
+        popup->findChildren<QAbstractButton *>(QString(), Qt::FindDirectChildrenOnly);
+    if (!buttons.isEmpty()) {
+        QTimer::singleShot(0, buttons.at(qBound(0, activeIndex, buttons.size() - 1)), [buttons, activeIndex]() {
+            buttons.at(qBound(0, activeIndex, buttons.size() - 1))->setFocus();
+        });
+    }
+}
+
+void MainWindow::openRuleFilePopup() {
+    if (!m_ruleFileTriggerButton || m_ruleFiles.isEmpty()) {
+        return;
+    }
+
+    if (m_selectorPopup && m_selectorPopupTrigger == m_ruleFileTriggerButton) {
+        closeSelectorPopup();
+        return;
+    }
+
+    closeSelectorPopup();
+
+    auto *popup = new QFrame(this, Qt::Popup | Qt::FramelessWindowHint);
+    popup->setObjectName("selectorPopup");
+    popup->setFocusPolicy(Qt::StrongFocus);
+    popup->installEventFilter(this);
+
+    auto *layout = new QVBoxLayout(popup);
+    layout->setContentsMargins(8, 8, 8, 8);
+    layout->setSpacing(6);
+    layout->setSizeConstraint(QLayout::SetMinimumSize);
+
+    const bool currentDirty = m_editor && m_editor->toPlainText() != m_loadedRuleText;
+    const auto validation = (m_editor && currentDirty) ? m_ruleSetService->validateJson(m_editor->toPlainText())
+                                                       : rules::ValidationResult{true, QString(), QString()};
+
+    int activeIndex = 0;
+    for (int index = 0; index < m_ruleFiles.size(); ++index) {
+        const auto &ruleFile = m_ruleFiles.at(index);
+        auto *button = new QPushButton(popup);
+        button->setObjectName("selectorOption");
+        button->setProperty("active", ruleFile.path == m_selectedRuleFilePath);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setMinimumHeight(74);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        button->installEventFilter(this);
+
+        auto *buttonLayout = new QVBoxLayout(button);
+        buttonLayout->setContentsMargins(12, 10, 12, 10);
+        buttonLayout->setSpacing(4);
+        buttonLayout->setSizeConstraint(QLayout::SetMinimumSize);
+
+        auto *head = new QWidget(button);
+        auto *headLayout = new QHBoxLayout(head);
+        headLayout->setContentsMargins(0, 0, 0, 0);
+        headLayout->setSpacing(8);
+        auto *headCopy = new QVBoxLayout();
+        headCopy->setSpacing(4);
+        auto *title = new QLabel(ruleFile.name, head);
+        title->setObjectName("selectorOptionTitle");
+        auto *subtitle = new QLabel(
+            ruleFile.description.isEmpty() ? QString("Editable local JSON rule-set") : ruleFile.description,
+            head);
+        subtitle->setObjectName("selectorOptionSub");
+        headCopy->addWidget(title);
+        headCopy->addWidget(subtitle);
+        headLayout->addLayout(headCopy, 1);
+
+        auto *badge = new QLabel(head);
+        badge->setObjectName("statusPill");
+        QString badgeText = "Saved";
+        QString badgeTone = "neutral";
+        if (ruleFile.path == m_selectedRuleFilePath) {
+            if (currentDirty) {
+                badgeText = validation.ok ? "Unsaved" : "Needs fix";
+                badgeTone = validation.ok ? "warn" : "danger";
+            } else {
+                badgeText = "Ready";
+                badgeTone = "ok";
+            }
+            activeIndex = index;
+        }
+        badge->setText(badgeText);
+        badge->setProperty("tone", badgeTone);
+        repolish(badge);
+        headLayout->addWidget(badge, 0, Qt::AlignTop);
+
+        auto *path = new QLabel(compactPath(ruleFile.path), button);
+        path->setObjectName("selectorOptionMeta");
+
+        buttonLayout->addWidget(head);
+        buttonLayout->addWidget(path);
+
+        connect(button, &QPushButton::clicked, this, [this, pathValue = ruleFile.path]() {
+            closeSelectorPopup();
+            m_selectedRuleFilePath = pathValue;
+            onRuleFileSelectionChanged();
+        });
+
+        layout->addWidget(button);
+    }
+
+    m_selectorPopup = popup;
+    m_selectorPopupTrigger = m_ruleFileTriggerButton;
+    m_selectorPopupTrigger->setProperty("open", true);
+    repolish(m_selectorPopupTrigger);
+    popup->show();
+    positionSelectorPopup(m_ruleFileTriggerButton);
+
+    const auto buttons =
+        popup->findChildren<QAbstractButton *>(QString(), Qt::FindDirectChildrenOnly);
+    if (!buttons.isEmpty()) {
+        QTimer::singleShot(0, buttons.at(qBound(0, activeIndex, buttons.size() - 1)), [buttons, activeIndex]() {
+            buttons.at(qBound(0, activeIndex, buttons.size() - 1))->setFocus();
+        });
+    }
+}
+
+void MainWindow::positionSelectorPopup(QWidget *trigger) {
+    if (!m_selectorPopup || !trigger) {
+        return;
+    }
+
+    QPoint anchor = trigger->mapToGlobal(QPoint(0, trigger->height() + 8));
+    QRect available = trigger->screen() ? trigger->screen()->availableGeometry()
+                                        : QGuiApplication::primaryScreen()->availableGeometry();
+
+    const int minWidth = qMax(trigger->width(), 320);
+    const int maxWidth = qMax(minWidth, qMin(available.width() - 24, 460));
+    const int hintedWidth = qMax(minWidth, m_selectorPopup->sizeHint().width());
+    const int width = qMin(hintedWidth, maxWidth);
+
+    m_selectorPopup->setMinimumWidth(width);
+    m_selectorPopup->resize(width, m_selectorPopup->sizeHint().height());
+
+    int x = anchor.x();
+    int y = anchor.y();
+
+    if (x + m_selectorPopup->width() > available.right()) {
+        x = available.right() - m_selectorPopup->width();
+    }
+    if (x < available.left()) {
+        x = available.left();
+    }
+    if (y + m_selectorPopup->height() > available.bottom()) {
+        y = trigger->mapToGlobal(QPoint(0, -m_selectorPopup->height() - 8)).y();
+    }
+    if (y < available.top()) {
+        y = available.top();
+    }
+
+    m_selectorPopup->move(x, y);
+}
+
+void MainWindow::updateRuleFileTrigger() {
+    const auto *file = selectedRuleFile();
+    const QString emptyDescription = "Choose the active local JSON file.";
+
+    if (m_ruleFileTriggerButton) {
+        m_ruleFileTriggerButton->setEnabled(!m_ruleFiles.isEmpty());
+    }
+    if (m_ruleFileTriggerNameLabel) {
+        m_ruleFileTriggerNameLabel->setText(file ? file->name : QString("No file selected"));
+    }
+    if (m_ruleFileTriggerDescriptionLabel) {
+        m_ruleFileTriggerDescriptionLabel->setText(
+            file ? (file->description.isEmpty() ? QString("Editable local JSON rule-set") : file->description)
+                 : emptyDescription);
+    }
+    if (m_ruleFileTriggerPathLabel) {
+        m_ruleFileTriggerPathLabel->setText(file ? compactPath(file->path) : QString());
+    }
+}
+
 void MainWindow::showActionMessage(const QString &message, int timeoutMs) {
-    if (!message.trimmed().isEmpty() && m_recentActionLabel) {
-        m_recentActionLabel->setText(message);
+    if (!message.trimmed().isEmpty()) {
+        m_recentActionText = message;
+        refreshRecentActionLabel();
     }
     statusBar()->showMessage(message, timeoutMs);
 }
@@ -1167,10 +1517,14 @@ void MainWindow::updateDashboardCards() {
     const QString diagnosticsText = m_config.diagnostics.enabled
                                         ? QString("Enabled · every %1 s").arg(m_config.diagnostics.refreshIntervalMs / 1000.0, 0, 'f', 0)
                                         : QString("Disabled");
+    const QString tunText = "Unavailable in current build";
+    const QString dnsText = "Not exposed by diagnostics";
+    const QString connectionApiText = QString("%1 · %2").arg(apiSummary, endpoint);
+    const QString latencyDetailText = m_lastDiagnostics.apiDetail.isEmpty() ? "Last probe steady" : m_lastDiagnostics.apiDetail;
 
     setStatusPill(m_headerReachabilityLabel, apiSummary, tone);
     setStatusPill(m_topRuntimeStatusLabel, busy ? "Syncing" : reachable ? "Running" : "Offline", tone);
-    setStatusPill(m_mainPanelStatusLabel, busy ? "Runtime syncing" : reachable ? "Controller healthy" : "Controller degraded", tone);
+    setStatusPill(m_mainPanelStatusLabel, busy ? "Runtime syncing" : reachable ? "Clash healthy" : "Controller degraded", tone);
     setStatusPill(m_rulePageStatusLabel, "Safe local edits", "warn");
     setStatusPill(m_settingsPageStatusLabel, "Local-only", "neutral");
 
@@ -1181,15 +1535,8 @@ void MainWindow::updateDashboardCards() {
                                                             m_trayAvailable ? "tray companion available" : "local-only runtime"));
     }
 
-    if (m_currentProfileLabel) {
-        m_currentProfileLabel->setText(displayModeName(activeProfile));
-    }
-    if (m_modeChipLabel) {
-        m_modeChipLabel->setText(QString("Mode value: %1").arg(rawMode));
-    }
-
     if (m_serviceStatusValue) {
-        m_serviceStatusValue->setText(apiSummary);
+        m_serviceStatusValue->setText(reachable ? "clash API reachable" : apiSummary);
     }
     if (m_serviceStatusDetail) {
         m_serviceStatusDetail->setText(QString("%1 · %2").arg(endpoint, detailText));
@@ -1204,41 +1551,32 @@ void MainWindow::updateDashboardCards() {
         m_selectedProfileValue->setText(displayModeName(m_selectedProfileName.isEmpty() ? activeProfile : m_selectedProfileName));
     }
     if (m_selectedProfileDetail) {
-        m_selectedProfileDetail->setText(joinOrUnknown(m_lastStatus.supportedModes));
+        m_selectedProfileDetail->setText("Current path chosen by controller");
     }
     if (m_lastReloadValue) {
         m_lastReloadValue->setText(refreshText);
     }
     if (m_lastReloadDetail) {
-        m_lastReloadDetail->setText(detailText);
+        m_lastReloadDetail->setText(reachable ? "No recent reload error" : detailText);
     }
 
     if (m_connectionEndpointValue) {
-        m_connectionEndpointValue->setText(QString("%1 · %2").arg(apiSummary, endpoint));
+        m_connectionEndpointValue->setText(connectionApiText);
     }
     if (m_connectionDiagnosticsValue) {
-        m_connectionDiagnosticsValue->setText(QString("%1\n%2").arg(latencyText, m_lastDiagnostics.apiDetail));
+        m_connectionDiagnosticsValue->setText(QString("%1 · %2").arg(latencyText, latencyDetailText));
     }
-    if (m_connectionIpValue) {
-        const QString ipValue = m_config.diagnostics.externalIp.enabled
-                                    ? QString("Proxy %1\nIPv4 %2\nIPv6 %3")
-                                          .arg(m_lastDiagnostics.proxyIp.isEmpty() ? "-" : m_lastDiagnostics.proxyIp,
-                                               m_lastDiagnostics.ipv4.isEmpty() ? "-" : m_lastDiagnostics.ipv4,
-                                               m_lastDiagnostics.ipv6.isEmpty() ? "-" : m_lastDiagnostics.ipv6)
-                                    : QString("External IP checks disabled");
-        m_connectionIpValue->setText(ipValue);
+    if (m_connectionTunValue) {
+        m_connectionTunValue->setText(tunText);
     }
-    if (m_connectionLocationValue) {
-        m_connectionLocationValue->setText(QString("%1\n%2").arg(locationText, m_lastDiagnostics.locationDetail));
+    if (m_connectionDnsValue) {
+        m_connectionDnsValue->setText(dnsText);
     }
     if (m_connectionRoutingValue) {
-        m_connectionRoutingValue->setText(QString("%1 local rule files active").arg(m_ruleFiles.size()));
+        m_connectionRoutingValue->setText(QString("Auto split · %1 local rule files active").arg(m_ruleFiles.size()));
     }
     if (m_controllerAddressValue) {
         m_controllerAddressValue->setText(endpoint);
-    }
-    if (m_connectionModesValue) {
-        m_connectionModesValue->setText(joinOrUnknown(m_lastStatus.supportedModes));
     }
 
     if (m_rulesDirectoryValue) {
@@ -1303,11 +1641,11 @@ void MainWindow::updateDashboardCards() {
     if (m_footerLatencyValue) {
         m_footerLatencyValue->setText(latencyText);
     }
-    if (m_footerModeValue) {
-        m_footerModeValue->setText(displayModeName(activeProfile));
+    if (m_footerTunValue) {
+        m_footerTunValue->setText("Unavailable");
     }
-    if (m_footerIpValue) {
-        m_footerIpValue->setText(proxyIp);
+    if (m_footerDnsValue) {
+        m_footerDnsValue->setText("Unavailable");
     }
     if (m_footerReloadValue) {
         m_footerReloadValue->setText(refreshText);
@@ -1328,6 +1666,7 @@ void MainWindow::onDiagnosticsUpdated(const tunlet::diagnostics::DiagnosticsSnap
 
 void MainWindow::onRuleFileSelectionChanged() {
     const auto *file = selectedRuleFile();
+    updateRuleFileTrigger();
     if (!file) {
         return;
     }
@@ -1380,6 +1719,7 @@ void MainWindow::onRuleEditorTextChanged() {
     } else {
         setRuleBanner("Saved copy", "Editor content matches the last loaded or saved file.", "neutral");
     }
+    updateRuleFileTrigger();
 }
 
 void MainWindow::validateCurrentEditorText() {
@@ -1402,6 +1742,7 @@ void MainWindow::validateCurrentEditorText() {
     const bool dirty = result.formattedText != m_loadedRuleText;
     setRuleBanner("Valid JSON", dirty ? "JSON is valid. Save to write the formatted version." : "JSON is valid and matches disk.", "ok");
     showActionMessage("JSON validated", 3000);
+    updateRuleFileTrigger();
 }
 
 void MainWindow::saveCurrentRuleFile() {
@@ -1434,6 +1775,7 @@ void MainWindow::saveCurrentRuleFile() {
     updateRuleLineNumbers();
     setRuleBanner("Saved", QString("Wrote %1").arg(compactPath(file->path)), "ok");
     showActionMessage("Rule-set saved", 3000);
+    updateRuleFileTrigger();
 }
 
 void MainWindow::reloadCurrentRuleFile() {
