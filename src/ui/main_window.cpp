@@ -26,6 +26,7 @@
 #include <QScreen>
 #include <QShortcut>
 #include <QSignalBlocker>
+#include <QSizePolicy>
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QStyle>
@@ -512,6 +513,7 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
     closeSelectorPopup();
     updateWindowSizeLabel();
     refreshRecentActionLabel();
+    refreshAppConfigPathLabel();
     positionFooterIpBadge();
 }
 
@@ -791,16 +793,10 @@ QWidget *MainWindow::buildDashboardPage() {
     headLayout->setSpacing(18);
 
     auto *headCopy = new QVBoxLayout();
-    headCopy->setSpacing(6);
+    headCopy->setSpacing(0);
     auto *title = new QLabel("Main control", panelHead);
     title->setObjectName("panelTitle");
-    auto *subtitle = new QLabel(
-        "More compact, almost tray-like main view: mode first, runtime context directly below it.",
-        panelHead);
-    subtitle->setObjectName("panelSubtitle");
-    subtitle->setWordWrap(true);
     headCopy->addWidget(title);
-    headCopy->addWidget(subtitle);
     headLayout->addLayout(headCopy, 1);
 
     m_mainPanelStatusLabel = new QLabel(panelHead);
@@ -906,13 +902,10 @@ QWidget *MainWindow::buildDashboardPage() {
     stateHeadLayout->setContentsMargins(0, 0, 0, 0);
     stateHeadLayout->setSpacing(12);
     auto *stateCopy = new QVBoxLayout();
-    stateCopy->setSpacing(4);
+    stateCopy->setSpacing(0);
     auto *stateTitle = new QLabel("Current state", stateHead);
     stateTitle->setObjectName("cardTitleStrong");
-    auto *stateSubtitle = new QLabel("Local runtime snapshot", stateHead);
-    stateSubtitle->setObjectName("cardSubtitle");
     stateCopy->addWidget(stateTitle);
-    stateCopy->addWidget(stateSubtitle);
     stateHeadLayout->addLayout(stateCopy, 1);
     auto *statePill = new QLabel("Runtime", stateHead);
     statePill->setObjectName("statusPill");
@@ -938,13 +931,10 @@ QWidget *MainWindow::buildDashboardPage() {
     connectionHeadLayout->setContentsMargins(0, 0, 0, 0);
     connectionHeadLayout->setSpacing(12);
     auto *connectionCopy = new QVBoxLayout();
-    connectionCopy->setSpacing(4);
+    connectionCopy->setSpacing(0);
     auto *connectionTitle = new QLabel("Connection info", connectionCard);
     connectionTitle->setObjectName("cardTitleStrong");
-    auto *connectionSubtitle = new QLabel("Technical details still readable in a narrow window", connectionCard);
-    connectionSubtitle->setObjectName("cardSubtitle");
     connectionCopy->addWidget(connectionTitle);
-    connectionCopy->addWidget(connectionSubtitle);
     connectionHeadLayout->addLayout(connectionCopy, 1);
     auto *densityLabel = new QLabel("Balanced density", connectionHead);
     densityLabel->setObjectName("metaChip");
@@ -963,17 +953,21 @@ QWidget *MainWindow::buildDashboardPage() {
                                 &m_rulesDirectoryValue,
                                 &m_configRootValue),
         1,
-        0);
+        0,
+        2,
+        1);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "DNS result", &m_connectionDnsValue), 1, 1);
     metricGrid->addWidget(
         buildDelayMetricItem(connectionCard,
                              &m_connectionDiagnosticsValue,
                              &m_connectionDelayDnsValue,
                              &m_connectionDelayConnectValue,
                              &m_connectionDelayTlsValue),
-        1,
+        2,
         1);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "DNS result", &m_connectionDnsValue), 2, 0, 1, 2);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Traffic", &m_profileHintValue), 3, 0, 1, 2);
+    metricGrid->setRowStretch(1, 1);
+    metricGrid->setRowStretch(2, 1);
     connectionLayout->addLayout(metricGrid);
     pageLayout->addWidget(connectionCard);
     pageLayout->addStretch(1);
@@ -1141,16 +1135,10 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     headLayout->setSpacing(18);
 
     auto *headCopy = new QVBoxLayout();
-    headCopy->setSpacing(6);
+    headCopy->setSpacing(0);
     auto *title = new QLabel("Settings / Info", panelHead);
     title->setObjectName("panelTitle");
-    auto *subtitle = new QLabel(
-        "Technical detail first, then live application configuration editing for the local controller.",
-        panelHead);
-    subtitle->setObjectName("panelSubtitle");
-    subtitle->setWordWrap(true);
     headCopy->addWidget(title);
-    headCopy->addWidget(subtitle);
     headLayout->addLayout(headCopy, 1);
 
     m_settingsPageStatusLabel = new QLabel(panelHead);
@@ -1165,10 +1153,7 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     appInfoLayout->setSpacing(14);
     auto *appInfoTitle = new QLabel("Application info", appInfoCard);
     appInfoTitle->setObjectName("cardTitleStrong");
-    auto *appInfoSubtitle = new QLabel("Paths, build metadata, and diagnostic cadence", appInfoCard);
-    appInfoSubtitle->setObjectName("cardSubtitle");
     appInfoLayout->addWidget(appInfoTitle);
-    appInfoLayout->addWidget(appInfoSubtitle);
     auto *appInfoGrid = new QGridLayout();
     appInfoGrid->setHorizontalSpacing(14);
     appInfoGrid->setVerticalSpacing(10);
@@ -1192,10 +1177,7 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     stateLayout->setSpacing(14);
     auto *stateTitle = new QLabel("Service and system state", stateCard);
     stateTitle->setObjectName("cardTitleStrong");
-    auto *stateSubtitle = new QLabel("Live runtime signals available to the current build", stateCard);
-    stateSubtitle->setObjectName("cardSubtitle");
     stateLayout->addWidget(stateTitle);
-    stateLayout->addWidget(stateSubtitle);
     auto *stateGrid = new QGridLayout();
     stateGrid->setHorizontalSpacing(14);
     stateGrid->setVerticalSpacing(10);
@@ -1230,10 +1212,13 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     editorCopy->setSpacing(4);
     auto *editorTitle = new QLabel("App config", editorHead);
     editorTitle->setObjectName("cardTitleStrong");
-    auto *editorSubtitle = new QLabel("Live YAML editor for tunlet config", editorHead);
-    editorSubtitle->setObjectName("cardSubtitle");
+    m_appConfigPathLabel = new QLabel(editorHead);
+    m_appConfigPathLabel->setObjectName("cardSubtitle");
+    m_appConfigPathLabel->setWordWrap(false);
+    m_appConfigPathLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_appConfigPathLabel->setMinimumWidth(0);
     editorCopy->addWidget(editorTitle);
-    editorCopy->addWidget(editorSubtitle);
+    editorCopy->addWidget(m_appConfigPathLabel);
     editorHeadLayout->addLayout(editorCopy, 1);
     auto *editorButtons = new QHBoxLayout();
     editorButtons->setSpacing(10);
@@ -1318,6 +1303,7 @@ void MainWindow::applyConfig(const config::AppConfig &config) {
 
     populateModeProfiles();
     populateRuleFiles();
+    refreshAppConfigPathLabel();
     updateDashboardCards();
 }
 
@@ -1514,6 +1500,32 @@ void MainWindow::refreshRecentActionLabel() {
     const QString visibleText =
         m_recentActionLabel->fontMetrics().elidedText(m_recentActionText, Qt::ElideRight, availableWidth);
     m_recentActionLabel->setText(visibleText);
+}
+
+void MainWindow::refreshAppConfigPathLabel() {
+    if (!m_appConfigPathLabel) {
+        return;
+    }
+
+    const QString fullPath = m_config.configPath.trimmed();
+    if (fullPath.isEmpty()) {
+        m_appConfigPathLabel->setText("Config path unavailable");
+        m_appConfigPathLabel->setToolTip(QString());
+        return;
+    }
+
+    const QString compact = compactPath(fullPath);
+    m_appConfigPathLabel->setToolTip(fullPath);
+    int availableWidth = m_appConfigPathLabel->width();
+    if (availableWidth <= 0 && m_appConfigPathLabel->parentWidget()) {
+        availableWidth = m_appConfigPathLabel->parentWidget()->contentsRect().width();
+    }
+    if (availableWidth <= 0 && m_appConfigPathLabel->parentWidget() && m_appConfigPathLabel->parentWidget()->parentWidget()) {
+        availableWidth = m_appConfigPathLabel->parentWidget()->parentWidget()->contentsRect().width();
+    }
+    availableWidth = qMax(220, availableWidth);
+    const QString visibleText = m_appConfigPathLabel->fontMetrics().elidedText(compact, Qt::ElideMiddle, availableWidth);
+    m_appConfigPathLabel->setText(visibleText);
 }
 
 void MainWindow::closeSelectorPopup() {

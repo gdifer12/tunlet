@@ -96,6 +96,7 @@ private:
     void updateSettingsEditorErrorHighlight();
     void applyEditorErrorHighlight(QPlainTextEdit *editor, int line, int column);
     void refreshRecentActionLabel();
+    void refreshAppConfigPathLabel();
     void closeSelectorPopup();
     void openModePopup();
     void openRuleFilePopup();
@@ -208,6 +209,7 @@ private:
     QLabel *m_stateLocationRefreshValue = nullptr;
     QLabel *m_stateTrafficValue = nullptr;
     QLabel *m_stateModeListValue = nullptr;
+    QLabel *m_appConfigPathLabel = nullptr;
     QLabel *m_settingsStatusLabel = nullptr;
     QPlainTextEdit *m_settingsEditor = nullptr;
     QScrollArea *m_settingsPageScrollArea = nullptr;
