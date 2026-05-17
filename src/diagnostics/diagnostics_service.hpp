@@ -2,6 +2,7 @@
 
 #include "clash/clash_api_client.hpp"
 #include "config/app_config.hpp"
+#include "diagnostics/geoip_provider.hpp"
 
 #include <QDateTime>
 #include <QNetworkAccessManager>
@@ -9,6 +10,8 @@
 #include <QPointer>
 #include <QProcess>
 #include <QTimer>
+
+#include <memory>
 
 class QNetworkReply;
 
@@ -24,7 +27,14 @@ struct DiagnosticsSnapshot {
     QString publicIp;
     QString publicIpDetail = "Public IP unavailable";
     QString location;
+    QString locationCountryCode;
     QString locationDetail = "Location unavailable";
+    QString locationSource = "Source unavailable";
+    QString locationAsnOrg = "ASN / Org unavailable";
+    QDateTime locationUpdatedAt;
+    QDateTime locationNextRefreshAt;
+    bool locationStale = false;
+    bool locationDisabled = false;
     qint64 delayDnsMs = -1;
     qint64 delayConnectMs = -1;
     qint64 delayTlsMs = -1;
@@ -49,6 +59,7 @@ public:
 
     void start();
     void refreshNow();
+    void refreshLocationDataNow();
     void updateConfig(const config::AppConfig &config);
     void observeModeStatus(const tunlet::clash::ModeStatus &status);
     DiagnosticsSnapshot snapshot() const;
@@ -65,10 +76,9 @@ private:
     void startIpv4Probe(quint64 generation);
     void startTimingProbe(quint64 generation);
     void startDnsProbe(quint64 generation);
-    void abortLocationDownload();
-    bool ensureLocationDatabaseAvailable(const QString &dbPath);
-    void startLocationDatabaseDownload(const QString &dbPath, const QString &downloadUrl);
-    void updateLocationFromPublicIp();
+    void rebuildGeoIpProvider();
+    void applyGeoIpResolveResult(const GeoIpResolveResult &result);
+    void readLocationFromPublicIp();
     void emitSnapshotUpdate();
 
     config::AppConfig m_config;
@@ -81,7 +91,7 @@ private:
     QPointer<QProcess> m_timingProcess;
     QPointer<QProcess> m_dnsProcess;
     QNetworkAccessManager m_networkManager;
-    QPointer<QNetworkReply> m_geoDbReply;
+    std::unique_ptr<GeoIpProvider> m_geoIpProvider;
 };
 
 }  // namespace tunlet::diagnostics

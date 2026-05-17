@@ -36,6 +36,7 @@
 #include <QTextCursor>
 #include <QTextEdit>
 #include <QTextFormat>
+#include <QToolTip>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 #include <QWidget>
@@ -46,6 +47,43 @@ namespace {
 
 QString endpointLabelForConfig(const config::AppConfig &config) {
     return QString("%1:%2").arg(config.clashApi.host).arg(config.clashApi.port);
+}
+
+bool hasUsableIpAddress(const QString &value) {
+    if (value.trimmed().isEmpty()) {
+        return false;
+    }
+
+    QHostAddress address;
+    return address.setAddress(value.trimmed());
+}
+
+QString flagEmojiForCountryCode(QString countryCode) {
+    countryCode = countryCode.trimmed().toUpper();
+    if (countryCode.size() != 2) {
+        return {};
+    }
+
+    QString flag;
+    flag.reserve(4);
+    for (const QChar ch : countryCode) {
+        if (ch < QChar('A') || ch > QChar('Z')) {
+            return {};
+        }
+        const char32_t regionalIndicator = 0x1F1E6 + (ch.unicode() - 'A');
+        flag.append(QString::fromUcs4(&regionalIndicator, 1));
+    }
+    return flag;
+}
+
+QString formatLocationBadgeText(const diagnostics::DiagnosticsSnapshot &snapshot) {
+    const QString countryCode = snapshot.locationCountryCode.trimmed().toUpper();
+    if (countryCode.isEmpty()) {
+        return "N/A";
+    }
+
+    const QString flag = flagEmojiForCountryCode(countryCode);
+    return flag.isEmpty() ? countryCode : QString("%1 %2").arg(countryCode, flag);
 }
 
 QString compactPath(const QString &path) {
@@ -119,6 +157,25 @@ QString buildDelayBreakdown(const diagnostics::DiagnosticsSnapshot &snapshot) {
     return parts.isEmpty() ? snapshot.delayDetail : parts.join(" · ");
 }
 
+QString formatDiagnosticTimestamp(const QDateTime &time) {
+    return time.isValid() ? time.toLocalTime().toString("yyyy-MM-dd HH:mm") : QString("Unavailable");
+}
+
+QString formatLocationSourceText(const diagnostics::DiagnosticsSnapshot &snapshot) {
+    if (snapshot.locationDisabled) {
+        return "Disabled";
+    }
+
+    QString text = snapshot.locationSource.trimmed();
+    if (text.isEmpty()) {
+        text = "Unavailable";
+    }
+    if (snapshot.locationStale && !text.contains("stale", Qt::CaseInsensitive)) {
+        text += ", stale";
+    }
+    return text;
+}
+
 QString compactProbeCommands(const config::AppConfig &config) {
     return QString("IP %1 · Delay %2 · DNS %3")
         .arg(commandName(config.diagnostics.connection.ipv4),
@@ -182,6 +239,99 @@ QWidget *buildMetricItem(QWidget *parent, const QString &labelText, QLabel **val
     (*valueLabel)->setTextFormat(Qt::PlainText);
     layout->addWidget(*valueLabel);
 
+    return item;
+}
+
+QWidget *buildDelayMetricItem(QWidget *parent,
+                              QLabel **totalValueLabel,
+                              QLabel **dnsValueLabel,
+                              QLabel **connectValueLabel,
+                              QLabel **tlsValueLabel) {
+    auto *item = new QWidget(parent);
+    item->setObjectName("metricItem");
+
+    auto *layout = new QVBoxLayout(item);
+    layout->setContentsMargins(14, 12, 14, 12);
+    layout->setSpacing(8);
+
+    auto *label = new QLabel("Delay", item);
+    label->setObjectName("metricLabel");
+    layout->addWidget(label);
+
+    auto *grid = new QGridLayout();
+    grid->setContentsMargins(0, 0, 0, 0);
+    grid->setHorizontalSpacing(10);
+    grid->setVerticalSpacing(8);
+
+    auto addCell = [item, grid](int row, int column, const QString &key, QLabel **target, const QString &valueObjectName) {
+        auto *cell = new QWidget(item);
+        auto *cellLayout = new QVBoxLayout(cell);
+        cellLayout->setContentsMargins(0, 0, 0, 0);
+        cellLayout->setSpacing(2);
+
+        auto *meta = new QLabel(key, cell);
+        meta->setObjectName("metaLabel");
+        *target = new QLabel(cell);
+        (*target)->setObjectName(valueObjectName);
+        (*target)->setWordWrap(false);
+        (*target)->setTextFormat(Qt::PlainText);
+
+        cellLayout->addWidget(meta);
+        cellLayout->addWidget(*target);
+        grid->addWidget(cell, row, column);
+    };
+
+    addCell(0, 0, "Total", totalValueLabel, "metricValueLead");
+    addCell(0, 1, "DNS", dnsValueLabel, "metricValueCompact");
+    addCell(1, 0, "Connect", connectValueLabel, "metricValueCompact");
+    addCell(1, 1, "TLS", tlsValueLabel, "metricValueCompact");
+    layout->addLayout(grid);
+    return item;
+}
+
+QWidget *buildLocationMetricItem(QWidget *parent,
+                                 QLabel **summaryValueLabel,
+                                 QLabel **asnOrgValueLabel,
+                                 QLabel **sourceValueLabel,
+                                 QLabel **nextRefreshValueLabel) {
+    auto *item = new QWidget(parent);
+    item->setObjectName("metricItem");
+
+    auto *layout = new QVBoxLayout(item);
+    layout->setContentsMargins(14, 12, 14, 12);
+    layout->setSpacing(8);
+
+    auto *label = new QLabel("Location", item);
+    label->setObjectName("metricLabel");
+    layout->addWidget(label);
+
+    *summaryValueLabel = new QLabel(item);
+    (*summaryValueLabel)->setObjectName("metricValueLead");
+    (*summaryValueLabel)->setWordWrap(true);
+    (*summaryValueLabel)->setTextFormat(Qt::PlainText);
+    layout->addWidget(*summaryValueLabel);
+
+    auto addDetailRow = [item, layout](const QString &key, QLabel **target) {
+        auto *row = new QWidget(item);
+        auto *rowLayout = new QVBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->setSpacing(2);
+
+        auto *meta = new QLabel(key, row);
+        meta->setObjectName("metaLabel");
+        *target = new QLabel(row);
+        (*target)->setObjectName("metricValueCompact");
+        (*target)->setWordWrap(true);
+        (*target)->setTextFormat(Qt::PlainText);
+
+        rowLayout->addWidget(meta);
+        rowLayout->addWidget(*target);
+        layout->addWidget(row);
+    };
+
+    addDetailRow("ASN / Org", asnOrgValueLabel);
+    addDetailRow("Source", sourceValueLabel);
+    addDetailRow("Next refresh", nextRefreshValueLabel);
     return item;
 }
 
@@ -362,6 +512,7 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
     closeSelectorPopup();
     updateWindowSizeLabel();
     refreshRecentActionLabel();
+    positionFooterIpBadge();
 }
 
 void MainWindow::buildUi(bool trayAvailable) {
@@ -527,12 +678,23 @@ QWidget *MainWindow::buildHealthStrip() {
         auto *itemLayout = new QVBoxLayout(item);
         itemLayout->setContentsMargins(10, 5, 10, 5);
         itemLayout->setSpacing(1);
-        auto *meta = new QLabel(labels.at(index), item);
-        meta->setObjectName("metaLabel");
+        if (labels.at(index) == "IP") {
+            m_footerIpItem = item;
+            auto *meta = new QLabel(labels.at(index), item);
+            meta->setObjectName("metaLabel");
+            m_footerIpLocationBadgeLabel = new QLabel("N/A", item);
+            m_footerIpLocationBadgeLabel->setObjectName("healthInlineBadge");
+            m_footerIpLocationBadgeLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            m_footerIpLocationBadgeLabel->raise();
+            itemLayout->addWidget(meta);
+        } else {
+            auto *meta = new QLabel(labels.at(index), item);
+            meta->setObjectName("metaLabel");
+            itemLayout->addWidget(meta);
+        }
         *targets[index] = new QLabel(item);
         (*targets[index])->setObjectName("healthValue");
         (*targets[index])->setWordWrap(true);
-        itemLayout->addWidget(meta);
         itemLayout->addWidget(*targets[index]);
         grid->addWidget(item, 0, index);
     }
@@ -719,8 +881,16 @@ QWidget *MainWindow::buildDashboardPage() {
         m_diagnosticsService->refreshNow();
         showActionMessage("Requested runtime refresh", 3000);
     });
+    m_refreshLocationDataButton = new QPushButton("Refresh location data", selectorCard);
+    m_refreshLocationDataButton->setObjectName("ghostButton");
+    m_refreshLocationDataButton->setAttribute(Qt::WA_AlwaysShowToolTips, true);
+    connect(m_refreshLocationDataButton, &QPushButton::clicked, this, [this]() {
+        m_diagnosticsService->refreshLocationDataNow();
+        showActionMessage("Requested location data refresh", 3000);
+    });
     actionRow->addWidget(refreshButton);
     actionRow->addWidget(reloadButton);
+    actionRow->addWidget(m_refreshLocationDataButton);
     actionRow->addStretch(1);
     selectorLayout->addLayout(actionRow);
     pageLayout->addWidget(selectorCard);
@@ -786,13 +956,24 @@ QWidget *MainWindow::buildDashboardPage() {
     metricGrid->setVerticalSpacing(10);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Clash API", &m_connectionEndpointValue), 0, 0);
     metricGrid->addWidget(buildMetricItem(connectionCard, "Public IP", &m_connectionTunValue), 0, 1);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "DNS result", &m_connectionDnsValue), 1, 0);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Delay", &m_connectionDiagnosticsValue), 1, 1);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Location", &m_connectionRoutingValue), 2, 0);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Diagnostics config", &m_configRootValue), 2, 1);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Controller address", &m_controllerAddressValue), 3, 0);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Rules directory", &m_rulesDirectoryValue), 3, 1);
-    metricGrid->addWidget(buildMetricItem(connectionCard, "Traffic", &m_profileHintValue), 4, 0, 1, 2);
+    metricGrid->addWidget(
+        buildLocationMetricItem(connectionCard,
+                                &m_connectionRoutingValue,
+                                &m_controllerAddressValue,
+                                &m_rulesDirectoryValue,
+                                &m_configRootValue),
+        1,
+        0);
+    metricGrid->addWidget(
+        buildDelayMetricItem(connectionCard,
+                             &m_connectionDiagnosticsValue,
+                             &m_connectionDelayDnsValue,
+                             &m_connectionDelayConnectValue,
+                             &m_connectionDelayTlsValue),
+        1,
+        1);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "DNS result", &m_connectionDnsValue), 2, 0, 1, 2);
+    metricGrid->addWidget(buildMetricItem(connectionCard, "Traffic", &m_profileHintValue), 3, 0, 1, 2);
     connectionLayout->addLayout(metricGrid);
     pageLayout->addWidget(connectionCard);
     pageLayout->addStretch(1);
@@ -998,7 +1179,7 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     m_infoEndpointValue = buildKeyValueRow(appInfoGrid, 3, "API endpoint", appInfoCard);
     m_infoDiagnosticsValue = buildKeyValueRow(appInfoGrid, 4, "Diagnostics cadence", appInfoCard);
     m_infoProbeCommandsValue = buildKeyValueRow(appInfoGrid, 5, "Probe commands", appInfoCard);
-    m_infoGeoDbValue = buildKeyValueRow(appInfoGrid, 6, "Geo DB", appInfoCard);
+    m_infoGeoDbValue = buildKeyValueRow(appInfoGrid, 6, "GeoIP backend", appInfoCard);
     m_infoProfilesValue = buildKeyValueRow(appInfoGrid, 7, "Profiles", appInfoCard);
     m_infoThemeValue = buildKeyValueRow(appInfoGrid, 8, "Theme source", appInfoCard);
     appInfoLayout->addLayout(appInfoGrid);
@@ -1023,9 +1204,14 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     m_stateCurrentModeValue = buildKeyValueRow(stateGrid, 1, "Current mode", stateCard);
     m_stateLastRefreshValue = buildKeyValueRow(stateGrid, 2, "Last refresh", stateCard);
     m_stateLastDetailValue = buildKeyValueRow(stateGrid, 3, "Last detail", stateCard);
-    m_stateExternalIpValue = buildKeyValueRow(stateGrid, 4, "IP / Location", stateCard);
-    m_stateTrafficValue = buildKeyValueRow(stateGrid, 5, "Traffic", stateCard);
-    m_stateModeListValue = buildKeyValueRow(stateGrid, 6, "Supported modes", stateCard);
+    m_stateExternalIpValue = buildKeyValueRow(stateGrid, 4, "Public IP", stateCard);
+    m_stateLocationValue = buildKeyValueRow(stateGrid, 5, "Location", stateCard);
+    m_stateAsnOrgValue = buildKeyValueRow(stateGrid, 6, "ASN / Org", stateCard);
+    m_stateLocationSourceValue = buildKeyValueRow(stateGrid, 7, "Source", stateCard);
+    m_stateLocationUpdatedValue = buildKeyValueRow(stateGrid, 8, "Updated", stateCard);
+    m_stateLocationRefreshValue = buildKeyValueRow(stateGrid, 9, "Next refresh", stateCard);
+    m_stateTrafficValue = buildKeyValueRow(stateGrid, 10, "Traffic", stateCard);
+    m_stateModeListValue = buildKeyValueRow(stateGrid, 11, "Supported modes", stateCard);
     stateLayout->addLayout(stateGrid);
     pageLayout->addWidget(stateCard);
 
@@ -1674,6 +1860,21 @@ void MainWindow::repolish(QWidget *widget) {
     widget->update();
 }
 
+void MainWindow::positionFooterIpBadge() {
+    if (!m_footerIpItem || !m_footerIpValue || !m_footerIpLocationBadgeLabel) {
+        return;
+    }
+
+    m_footerIpLocationBadgeLabel->adjustSize();
+    const QRect valueGeometry = m_footerIpValue->geometry();
+    const int visibleValueWidth = qMin(m_footerIpValue->sizeHint().width(), valueGeometry.width());
+    const int textRightEdge = valueGeometry.left() + visibleValueWidth;
+    const int x = textRightEdge - m_footerIpLocationBadgeLabel->width();
+    const int y = 5;
+    m_footerIpLocationBadgeLabel->move(qMax(10, x), y);
+    m_footerIpLocationBadgeLabel->raise();
+}
+
 void MainWindow::updateDashboardCards() {
     const QString endpoint = m_lastStatus.endpointLabel.isEmpty() ? endpointLabelForConfig(m_config) : m_lastStatus.endpointLabel;
     const QString activeProfile = m_lastStatus.currentProfileName.isEmpty() ? "unknown" : m_lastStatus.currentProfileName;
@@ -1686,7 +1887,18 @@ void MainWindow::updateDashboardCards() {
     const QDateTime lastRefresh = m_lastDiagnostics.lastUpdated.isValid() ? m_lastDiagnostics.lastUpdated : m_lastStatus.lastUpdated;
     const QString refreshText = lastRefreshLabel(lastRefresh);
     const QString publicIp = m_lastDiagnostics.publicIp.isEmpty() ? "-" : m_lastDiagnostics.publicIp;
-    const QString locationText = m_lastDiagnostics.location.isEmpty() ? "Location unavailable" : m_lastDiagnostics.location;
+    const bool publicIpUsable = hasUsableIpAddress(m_lastDiagnostics.publicIp);
+    const QString locationText =
+        m_lastDiagnostics.location.isEmpty() ? (m_lastDiagnostics.locationDisabled ? "Location disabled" : "Location unavailable")
+                                             : m_lastDiagnostics.location;
+    const QString locationBadgeText = formatLocationBadgeText(m_lastDiagnostics);
+    const QString locationAsnOrgText =
+        m_lastDiagnostics.locationAsnOrg.trimmed().isEmpty() ? "Unavailable" : m_lastDiagnostics.locationAsnOrg;
+    const QString locationSourceText = formatLocationSourceText(m_lastDiagnostics);
+    const QString locationUpdatedText =
+        m_lastDiagnostics.locationDisabled ? "Disabled" : formatDiagnosticTimestamp(m_lastDiagnostics.locationUpdatedAt);
+    const QString locationNextRefreshText =
+        m_lastDiagnostics.locationDisabled ? "Disabled" : formatDiagnosticTimestamp(m_lastDiagnostics.locationNextRefreshAt);
     const QString delayText = formatDelayValue(m_lastDiagnostics.delayTotalMs);
     const QString trafficText =
         m_lastDiagnostics.trafficAvailable ? QString("%1\n%2").arg(m_lastDiagnostics.trafficSummary, m_lastDiagnostics.trafficDetail)
@@ -1706,6 +1918,32 @@ void MainWindow::updateDashboardCards() {
                                            m_lastDiagnostics.externalDetail != "Refreshing connection diagnostics"
                                        ? m_lastDiagnostics.externalDetail
                                        : detailText;
+    bool canRefreshLocationData = false;
+    QString refreshLocationTooltip = "Location data refresh unavailable";
+    switch (m_config.diagnostics.connection.location.mode) {
+    case config::DiagnosticsLocationMode::Disabled:
+        refreshLocationTooltip = "Location lookup is disabled";
+        break;
+    case config::DiagnosticsLocationMode::DynamicCache:
+        if (!m_config.diagnostics.connection.location.dynamicCache.allowManualRefresh) {
+            refreshLocationTooltip = "Manual location updates are disabled";
+        } else if (!publicIpUsable) {
+            refreshLocationTooltip = "Public IP unavailable; run Refresh runtime first";
+        } else {
+            canRefreshLocationData = true;
+            refreshLocationTooltip = "Refresh cached location data from the GeoIP provider";
+        }
+        break;
+    case config::DiagnosticsLocationMode::LocalDb:
+    default:
+        if (m_config.diagnostics.connection.location.localDb.downloadUrl.trimmed().isEmpty()) {
+            refreshLocationTooltip = "Local DB update is not configured";
+        } else {
+            canRefreshLocationData = true;
+            refreshLocationTooltip = "Download and replace the local GeoIP database";
+        }
+        break;
+    }
 
     setStatusPill(m_headerReachabilityLabel, apiSummary, tone);
     setStatusPill(m_topRuntimeStatusLabel, busy ? "Syncing" : reachable ? "Running" : "Offline", tone);
@@ -1744,12 +1982,35 @@ void MainWindow::updateDashboardCards() {
     if (m_lastReloadDetail) {
         m_lastReloadDetail->setText(reachable ? "Last combined diagnostics refresh" : detailText);
     }
+    if (m_refreshLocationDataButton) {
+        m_refreshLocationDataButton->setEnabled(canRefreshLocationData);
+        m_refreshLocationDataButton->setToolTip(refreshLocationTooltip);
+    }
+    if (m_footerIpLocationBadgeLabel) {
+        m_footerIpLocationBadgeLabel->setText(locationBadgeText);
+        m_footerIpLocationBadgeLabel->setToolTip(
+            locationBadgeText == "N/A" ? QString("Location information unavailable") : locationText);
+        positionFooterIpBadge();
+    }
 
     if (m_connectionEndpointValue) {
         m_connectionEndpointValue->setText(connectionApiText);
     }
     if (m_connectionDiagnosticsValue) {
-        m_connectionDiagnosticsValue->setText(QString("%1 · %2").arg(delayText, delayDetailText));
+        m_connectionDiagnosticsValue->setText(delayText);
+        m_connectionDiagnosticsValue->setToolTip(delayDetailText);
+    }
+    if (m_connectionDelayDnsValue) {
+        m_connectionDelayDnsValue->setText(
+            m_lastDiagnostics.delayDnsMs >= 0 ? QString("%1 ms").arg(m_lastDiagnostics.delayDnsMs) : "—");
+    }
+    if (m_connectionDelayConnectValue) {
+        m_connectionDelayConnectValue->setText(
+            m_lastDiagnostics.delayConnectMs >= 0 ? QString("%1 ms").arg(m_lastDiagnostics.delayConnectMs) : "—");
+    }
+    if (m_connectionDelayTlsValue) {
+        m_connectionDelayTlsValue->setText(
+            m_lastDiagnostics.delayTlsMs >= 0 ? QString("%1 ms").arg(m_lastDiagnostics.delayTlsMs) : "—");
     }
     if (m_connectionTunValue) {
         m_connectionTunValue->setText(publicIp == "-" ? "Unavailable" : publicIp);
@@ -1761,14 +2022,14 @@ void MainWindow::updateDashboardCards() {
         m_connectionRoutingValue->setText(locationText);
     }
     if (m_controllerAddressValue) {
-        m_controllerAddressValue->setText(endpoint);
+        m_controllerAddressValue->setText(locationAsnOrgText);
     }
 
     if (m_rulesDirectoryValue) {
-        m_rulesDirectoryValue->setText(rulesDirectoryForConfig(m_config));
+        m_rulesDirectoryValue->setText(locationSourceText);
     }
     if (m_configRootValue) {
-        m_configRootValue->setText(QString("%1\n%2").arg(diagnosticsConfigText, m_lastDiagnostics.configurationDetail));
+        m_configRootValue->setText(locationNextRefreshText);
     }
     if (m_profileHintValue) {
         m_profileHintValue->setText(trafficText);
@@ -1795,7 +2056,7 @@ void MainWindow::updateDashboardCards() {
         m_infoProbeCommandsValue->setText(diagnosticsConfigText);
     }
     if (m_infoGeoDbValue) {
-        m_infoGeoDbValue->setText(compactPath(m_config.diagnostics.connection.location.databasePath));
+        m_infoGeoDbValue->setText(m_lastDiagnostics.configurationDetail);
     }
     if (m_infoProfilesValue) {
         m_infoProfilesValue->setText(QString("%1 available").arg(m_modeController->profiles().size()));
@@ -1817,7 +2078,22 @@ void MainWindow::updateDashboardCards() {
         m_stateLastDetailValue->setText(lastDetailText);
     }
     if (m_stateExternalIpValue) {
-        m_stateExternalIpValue->setText(publicIp == "-" ? "Unavailable" : QString("%1 · %2").arg(publicIp, locationText));
+        m_stateExternalIpValue->setText(publicIp == "-" ? "Unavailable" : publicIp);
+    }
+    if (m_stateLocationValue) {
+        m_stateLocationValue->setText(locationText);
+    }
+    if (m_stateAsnOrgValue) {
+        m_stateAsnOrgValue->setText(locationAsnOrgText);
+    }
+    if (m_stateLocationSourceValue) {
+        m_stateLocationSourceValue->setText(locationSourceText);
+    }
+    if (m_stateLocationUpdatedValue) {
+        m_stateLocationUpdatedValue->setText(locationUpdatedText);
+    }
+    if (m_stateLocationRefreshValue) {
+        m_stateLocationRefreshValue->setText(locationNextRefreshText);
     }
     if (m_stateTrafficValue) {
         m_stateTrafficValue->setText(trafficText);

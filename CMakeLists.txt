@@ -27,6 +27,7 @@ set(TUNLET_SOURCES
     src/config/config_loader.cpp
     src/config/config_file_service.cpp
     src/clash/clash_api_client.cpp
+    src/diagnostics/geoip_provider.cpp
     src/clash/mode_controller.cpp
     src/diagnostics/diagnostics_parsing.cpp
     src/rules/ruleset_service.cpp

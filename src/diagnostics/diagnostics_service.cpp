@@ -4,16 +4,9 @@
 #include "diagnostics/diagnostics_parsing.hpp"
 
 #include <QDateTime>
-#include <QDir>
 #include <QFileInfo>
 #include <QHostAddress>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QSaveFile>
 #include <QStringList>
-#include <QUrl>
-
-#include <maxminddb.h>
 
 namespace tunlet::diagnostics {
 namespace {
@@ -74,33 +67,6 @@ QString timingBreakdown(const DiagnosticsSnapshot &snapshot) {
     return parts.isEmpty() ? QString("Delay components unavailable") : parts.join(" · ");
 }
 
-QString lookupMmdbString(const MMDB_entry_s *entry,
-                         const char *segment1,
-                         const char *segment2 = nullptr,
-                         const char *segment3 = nullptr,
-                         const char *segment4 = nullptr) {
-    MMDB_entry_data_s entryData;
-    int status = MMDB_get_value(const_cast<MMDB_entry_s *>(entry), &entryData, segment1, segment2, segment3, segment4, nullptr);
-    if (status != MMDB_SUCCESS || !entryData.has_data || entryData.type != MMDB_DATA_TYPE_UTF8_STRING) {
-        return {};
-    }
-
-    return QString::fromUtf8(entryData.utf8_string, entryData.data_size).trimmed();
-}
-
-bool isUsableIpAddress(const QString &value) {
-    if (value.isEmpty()) {
-        return false;
-    }
-
-    QHostAddress address;
-    return address.setAddress(value.trimmed());
-}
-
-QString locationLookupError(const QString &ipAddress, const QString &reason) {
-    return QString("Location lookup failed for %1: %2").arg(ipAddress, reason);
-}
-
 QString describeProcessFailure(const QString &probeName, QProcess *process, const QByteArray &stderrOutput, int timeoutMs) {
     if (process->property("timedOut").toBool()) {
         return QString("%1 timed out after %2 ms").arg(probeName).arg(timeoutMs);
@@ -124,6 +90,27 @@ QString describeProcessFailure(const QString &probeName, QProcess *process, cons
                                 : QString("%1 failed: %2").arg(probeName, stderrText);
 }
 
+bool isUsableIpAddress(const QString &value) {
+    if (value.isEmpty()) {
+        return false;
+    }
+
+    QHostAddress address;
+    return address.setAddress(value.trimmed());
+}
+
+QString locationModeName(config::DiagnosticsLocationMode mode) {
+    switch (mode) {
+    case config::DiagnosticsLocationMode::Disabled:
+        return "disabled";
+    case config::DiagnosticsLocationMode::DynamicCache:
+        return "dynamic_cache";
+    case config::DiagnosticsLocationMode::LocalDb:
+    default:
+        return "local_db";
+    }
+}
+
 }  // namespace
 
 DiagnosticsService::DiagnosticsService(const config::AppConfig &config, clash::ClashApiClient *client, QObject *parent)
@@ -131,11 +118,13 @@ DiagnosticsService::DiagnosticsService(const config::AppConfig &config, clash::C
     connect(m_client, &clash::ClashApiClient::healthCheckFinished, this, &DiagnosticsService::handleHealthResult);
     connect(m_client, &clash::ClashApiClient::trafficFinished, this, &DiagnosticsService::handleTrafficResult);
     connect(&m_timer, &QTimer::timeout, this, &DiagnosticsService::refreshNow);
+    rebuildGeoIpProvider();
     updateConfigurationSnapshot();
 }
 
 void DiagnosticsService::start() {
     updateConfigurationSnapshot();
+
     if (!m_config.diagnostics.enabled) {
         resetConnectionSnapshot("Diagnostics disabled");
         return;
@@ -163,11 +152,47 @@ void DiagnosticsService::refreshNow() {
     startDnsProbe(generation);
 }
 
+void DiagnosticsService::refreshLocationDataNow() {
+    if (!m_config.diagnostics.enabled) {
+        return;
+    }
+
+    if (!m_geoIpProvider) {
+        applyGeoIpResolveResult({.state = GeoIpResolveState::Unavailable, .detail = "Location provider unavailable."});
+        emitSnapshotUpdate();
+        return;
+    }
+
+    const QString publicIp = m_snapshot.publicIp.trimmed();
+    const bool needsCurrentIp = m_config.diagnostics.connection.location.mode == config::DiagnosticsLocationMode::DynamicCache;
+    if (needsCurrentIp && !isUsableIpAddress(publicIp)) {
+        applyGeoIpResolveResult({.state = GeoIpResolveState::Unavailable,
+                                 .detail = "Public IP unavailable; run Refresh runtime before updating location data."});
+        emitSnapshotUpdate();
+        return;
+    }
+
+    m_snapshot.externalDetail = "Refreshing location data";
+    emitSnapshotUpdate();
+
+    const GeoIpResolveResult immediate = m_geoIpProvider->refreshLocationData(
+        publicIp,
+        [this, publicIp](const GeoIpResolveResult &asyncResult) {
+            if (!publicIp.isEmpty() && publicIp != m_snapshot.publicIp.trimmed()) {
+                return;
+            }
+            applyGeoIpResolveResult(asyncResult);
+            emitSnapshotUpdate();
+        });
+    applyGeoIpResolveResult(immediate);
+    emitSnapshotUpdate();
+}
+
 void DiagnosticsService::updateConfig(const config::AppConfig &config) {
     const bool wasEnabled = m_config.diagnostics.enabled;
-    abortLocationDownload();
     m_config = config;
     m_lastObservedModeValue.clear();
+    rebuildGeoIpProvider();
     updateConfigurationSnapshot();
 
     if (!m_config.diagnostics.enabled) {
@@ -244,25 +269,57 @@ void DiagnosticsService::updateConfigurationSnapshot() {
     }
 
     m_snapshot.configurationSummary =
-        QString("IP %1 · Delay %2 · DNS %3")
+        QString("IP %1 · Delay %2 · DNS %3 · GeoIP %4")
             .arg(commandName(diagnostics.connection.ipv4),
                  commandName(diagnostics.connection.timing),
-                 commandName(diagnostics.connection.dns));
-    m_snapshot.configurationDetail =
-        QString("Geo DB: %1%2 · refresh %3 · timeout %4 ms")
-            .arg(diagnostics.connection.location.databasePath,
-                 diagnostics.connection.location.downloadUrl.trimmed().isEmpty() ? QString()
-                                                                                 : QString(" · bootstrap %1")
-                                                                                       .arg(diagnostics.connection.location.downloadUrl),
-                 formatRefreshInterval(diagnostics.refreshIntervalMs),
-                 QString::number(diagnostics.requestTimeoutMs));
+                 commandName(diagnostics.connection.dns),
+                 locationModeName(diagnostics.connection.location.mode));
+
+    const auto &location = diagnostics.connection.location;
+    switch (location.mode) {
+    case config::DiagnosticsLocationMode::Disabled:
+        m_snapshot.configurationDetail =
+            QString("Location disabled · refresh %1 · timeout %2 ms")
+                .arg(formatRefreshInterval(diagnostics.refreshIntervalMs), QString::number(diagnostics.requestTimeoutMs));
+        break;
+    case config::DiagnosticsLocationMode::DynamicCache:
+        m_snapshot.configurationDetail =
+            QString("Provider %1 · cache %2 · TTL %3d ±%4d · endpoint %5 · timeout %6 ms")
+                .arg(location.dynamicCache.provider,
+                     location.dynamicCache.cachePath,
+                     QString::number(location.dynamicCache.baseRefreshDays),
+                     QString::number(location.dynamicCache.randomShiftDays),
+                     location.dynamicCache.url,
+                     QString::number(location.dynamicCache.timeoutMs));
+        break;
+    case config::DiagnosticsLocationMode::LocalDb:
+    default:
+        m_snapshot.configurationDetail =
+            QString("City DB %1 · ASN DB %2%3 · refresh %4 · timeout %5 ms")
+                .arg(location.localDb.databasePath,
+                     location.localDb.asnDatabasePath.trimmed().isEmpty() ? QString("not configured")
+                                                                          : location.localDb.asnDatabasePath,
+                     location.localDb.downloadUrl.trimmed().isEmpty()
+                         ? QString()
+                         : QString(" · bootstrap %1").arg(location.localDb.downloadUrl),
+                     formatRefreshInterval(diagnostics.refreshIntervalMs),
+                     QString::number(diagnostics.requestTimeoutMs));
+        break;
+    }
 }
 
 void DiagnosticsService::resetConnectionSnapshot(const QString &reason) {
     m_snapshot.publicIp.clear();
     m_snapshot.publicIpDetail = reason;
     m_snapshot.location.clear();
+    m_snapshot.locationCountryCode.clear();
     m_snapshot.locationDetail = reason;
+    m_snapshot.locationSource = "Source unavailable";
+    m_snapshot.locationAsnOrg = "ASN / Org unavailable";
+    m_snapshot.locationUpdatedAt = {};
+    m_snapshot.locationNextRefreshAt = {};
+    m_snapshot.locationStale = false;
+    m_snapshot.locationDisabled = false;
     m_snapshot.delayDnsMs = -1;
     m_snapshot.delayConnectMs = -1;
     m_snapshot.delayTlsMs = -1;
@@ -288,15 +345,11 @@ void DiagnosticsService::abortProbe(QPointer<QProcess> &process) {
     process = nullptr;
 }
 
-void DiagnosticsService::abortLocationDownload() {
-    if (!m_geoDbReply) {
-        return;
+void DiagnosticsService::rebuildGeoIpProvider() {
+    if (m_geoIpProvider) {
+        m_geoIpProvider->cancelPending();
     }
-
-    disconnect(m_geoDbReply, nullptr, this, nullptr);
-    m_geoDbReply->abort();
-    m_geoDbReply->deleteLater();
-    m_geoDbReply = nullptr;
+    m_geoIpProvider = createGeoIpProvider(m_config.diagnostics.connection.location, &m_networkManager, this);
 }
 
 void DiagnosticsService::startIpv4Probe(quint64 generation) {
@@ -357,7 +410,7 @@ void DiagnosticsService::startIpv4Probe(quint64 generation) {
                         m_snapshot.publicIp = ip;
                         m_snapshot.publicIpDetail = QString("Resolved via %1").arg(commandName(m_config.diagnostics.connection.ipv4));
                         m_snapshot.externalDetail = QString("Public IP updated: %1").arg(ip);
-                        updateLocationFromPublicIp();
+                        readLocationFromPublicIp();
                         emitSnapshotUpdate();
                         process->deleteLater();
                         return;
@@ -446,8 +499,8 @@ void DiagnosticsService::startTimingProbe(quint64 generation) {
                     m_snapshot.delayDetail = QString("Delay parse failed: %1").arg(parseFailure);
                     m_snapshot.externalDetail = m_snapshot.delayDetail;
                 } else {
-                    const QString failure = describeProcessFailure(
-                        "Delay probe", process, stdErr, m_config.diagnostics.requestTimeoutMs);
+                    const QString failure =
+                        describeProcessFailure("Delay probe", process, stdErr, m_config.diagnostics.requestTimeoutMs);
                     m_snapshot.delayDetail = failure;
                     m_snapshot.externalDetail = failure;
                 }
@@ -518,8 +571,8 @@ void DiagnosticsService::startDnsProbe(quint64 generation) {
                     m_snapshot.dnsDetail = QString("DNS parse failed: %1").arg(parseFailure);
                     m_snapshot.externalDetail = m_snapshot.dnsDetail;
                 } else {
-                    const QString failure = describeProcessFailure(
-                        "DNS probe", process, stdErr, m_config.diagnostics.requestTimeoutMs);
+                    const QString failure =
+                        describeProcessFailure("DNS probe", process, stdErr, m_config.diagnostics.requestTimeoutMs);
                     m_snapshot.dnsDetail = failure;
                     m_snapshot.externalDetail = failure;
                 }
@@ -531,181 +584,92 @@ void DiagnosticsService::startDnsProbe(quint64 generation) {
     process->start();
 }
 
-void DiagnosticsService::updateLocationFromPublicIp() {
-    if (!m_config.diagnostics.connection.location.enabled) {
-        m_snapshot.location.clear();
-        m_snapshot.locationDetail = "Location lookup disabled in config.";
+void DiagnosticsService::applyGeoIpResolveResult(const GeoIpResolveResult &result) {
+    m_snapshot.locationDisabled = result.state == GeoIpResolveState::Disabled;
+
+    switch (result.state) {
+    case GeoIpResolveState::Disabled:
+        m_snapshot.location = "Location disabled";
+        m_snapshot.locationCountryCode.clear();
+        m_snapshot.locationDetail = result.detail;
+        m_snapshot.locationSource = "Disabled";
+        m_snapshot.locationAsnOrg = "Unavailable";
+        m_snapshot.locationUpdatedAt = {};
+        m_snapshot.locationNextRefreshAt = {};
+        m_snapshot.locationStale = false;
+        m_snapshot.externalDetail = result.detail;
+        return;
+    case GeoIpResolveState::Ready:
+        m_snapshot.location = formatGeoLocationSummary(result.record);
+        m_snapshot.locationCountryCode = result.record.countryCode.trimmed().toUpper();
+        m_snapshot.locationDetail = result.detail;
+        m_snapshot.locationSource = formatGeoLocationSource(result.record);
+        m_snapshot.locationAsnOrg = formatGeoLocationAsnOrg(result.record).isEmpty() ? "Unavailable"
+                                                                                    : formatGeoLocationAsnOrg(result.record);
+        m_snapshot.locationUpdatedAt = result.record.updatedAt;
+        m_snapshot.locationNextRefreshAt = result.record.nextRefreshAt;
+        m_snapshot.locationStale = result.record.stale;
+        m_snapshot.externalDetail = result.detail;
+        return;
+    case GeoIpResolveState::Pending:
+        if (!result.record.publicIp.isEmpty()) {
+            m_snapshot.location = formatGeoLocationSummary(result.record);
+            m_snapshot.locationCountryCode = result.record.countryCode.trimmed().toUpper();
+            m_snapshot.locationSource = formatGeoLocationSource(result.record);
+            m_snapshot.locationAsnOrg = formatGeoLocationAsnOrg(result.record).isEmpty() ? "Unavailable"
+                                                                                        : formatGeoLocationAsnOrg(result.record);
+            m_snapshot.locationUpdatedAt = result.record.updatedAt;
+            m_snapshot.locationNextRefreshAt = result.record.nextRefreshAt;
+            m_snapshot.locationStale = true;
+        } else if (m_snapshot.location.isEmpty()) {
+            m_snapshot.location = "Location unavailable";
+            m_snapshot.locationCountryCode.clear();
+            m_snapshot.locationSource = "Unavailable";
+            m_snapshot.locationAsnOrg = "Unavailable";
+            m_snapshot.locationUpdatedAt = {};
+            m_snapshot.locationNextRefreshAt = {};
+            m_snapshot.locationStale = false;
+        }
+        m_snapshot.locationDetail = result.detail;
+        m_snapshot.externalDetail = result.detail;
+        return;
+    case GeoIpResolveState::Unavailable:
+    default:
+        m_snapshot.location = "Location unavailable";
+        m_snapshot.locationCountryCode.clear();
+        m_snapshot.locationDetail = result.detail;
+        m_snapshot.locationSource = "Unavailable";
+        m_snapshot.locationAsnOrg = "Unavailable";
+        m_snapshot.locationUpdatedAt = {};
+        m_snapshot.locationNextRefreshAt = {};
+        m_snapshot.locationStale = false;
+        m_snapshot.externalDetail = result.detail;
+        return;
+    }
+}
+
+void DiagnosticsService::readLocationFromPublicIp() {
+    if (!m_geoIpProvider) {
+        applyGeoIpResolveResult({.state = GeoIpResolveState::Unavailable, .detail = "Location provider unavailable."});
         return;
     }
 
     if (!isUsableIpAddress(m_snapshot.publicIp)) {
-        m_snapshot.location.clear();
-        m_snapshot.locationDetail = "Waiting for a usable public IP before resolving location.";
+        applyGeoIpResolveResult({.state = GeoIpResolveState::Unavailable, .detail = "Waiting for a usable public IP before resolving location."});
         return;
     }
 
-    const QString dbPath = m_config.diagnostics.connection.location.databasePath;
-    if (!ensureLocationDatabaseAvailable(dbPath)) {
-        return;
-    }
-
-    MMDB_s mmdb;
-    const QByteArray dbPathBytes = dbPath.toUtf8();
-    const int openStatus = MMDB_open(dbPathBytes.constData(), MMDB_MODE_MMAP, &mmdb);
-    if (openStatus != MMDB_SUCCESS) {
-        m_snapshot.location.clear();
-        m_snapshot.locationDetail = locationLookupError(
-            m_snapshot.publicIp,
-            QString("failed to open %1").arg(QString::fromUtf8(MMDB_strerror(openStatus))));
-        return;
-    }
-
-    const QByteArray ipBytes = m_snapshot.publicIp.toUtf8();
-    int gaiError = 0;
-    int mmdbError = 0;
-    const MMDB_lookup_result_s lookup = MMDB_lookup_string(&mmdb, ipBytes.constData(), &gaiError, &mmdbError);
-    if (gaiError != 0) {
-        m_snapshot.location.clear();
-        m_snapshot.locationDetail = locationLookupError(m_snapshot.publicIp, QString("gai error %1").arg(gaiError));
-        MMDB_close(&mmdb);
-        return;
-    }
-    if (mmdbError != MMDB_SUCCESS) {
-        m_snapshot.location.clear();
-        m_snapshot.locationDetail = locationLookupError(
-            m_snapshot.publicIp,
-            QString::fromUtf8(MMDB_strerror(mmdbError)));
-        MMDB_close(&mmdb);
-        return;
-    }
-    if (!lookup.found_entry) {
-        m_snapshot.location.clear();
-        m_snapshot.locationDetail = locationLookupError(m_snapshot.publicIp, "address not found in Geo DB");
-        MMDB_close(&mmdb);
-        return;
-    }
-
-    QStringList parts;
-    const QString city = lookupMmdbString(&lookup.entry, "city", "names", "en");
-    const QString region = lookupMmdbString(&lookup.entry, "subdivisions", "0", "names", "en");
-    const QString country = lookupMmdbString(&lookup.entry, "country", "names", "en");
-    if (!city.isEmpty()) {
-        parts.push_back(city);
-    }
-    if (!region.isEmpty() && region != city) {
-        parts.push_back(region);
-    }
-    if (!country.isEmpty()) {
-        parts.push_back(country);
-    }
-
-    m_snapshot.location = parts.isEmpty() ? "Unknown location" : parts.join(", ");
-    m_snapshot.locationDetail = QString("Lookup IP: %1 · Geo DB: %2").arg(m_snapshot.publicIp, dbPath);
-    MMDB_close(&mmdb);
-}
-
-bool DiagnosticsService::ensureLocationDatabaseAvailable(const QString &dbPath) {
-    const QFileInfo dbInfo(dbPath);
-    if (dbInfo.exists() && dbInfo.isFile()) {
-        return true;
-    }
-
-    QDir dbDir = dbInfo.dir();
-    if (!dbDir.exists() && !dbDir.mkpath(".")) {
-        m_snapshot.location.clear();
-        m_snapshot.locationDetail =
-            locationLookupError(m_snapshot.publicIp, QString("failed to create Geo DB directory %1").arg(dbDir.absolutePath()));
-        return false;
-    }
-
-    const QString downloadUrl = m_config.diagnostics.connection.location.downloadUrl.trimmed();
-    if (downloadUrl.isEmpty()) {
-        m_snapshot.location.clear();
-        m_snapshot.locationDetail =
-            locationLookupError(m_snapshot.publicIp, QString("Geo DB not found at %1 and no downloadUrl configured").arg(dbPath));
-        return false;
-    }
-
-    if (m_geoDbReply) {
-        m_snapshot.location.clear();
-        m_snapshot.locationDetail =
-            locationLookupError(m_snapshot.publicIp, QString("Geo DB download in progress for %1").arg(dbPath));
-        return false;
-    }
-
-    startLocationDatabaseDownload(dbPath, downloadUrl);
-    return false;
-}
-
-void DiagnosticsService::startLocationDatabaseDownload(const QString &dbPath, const QString &downloadUrl) {
-    const QUrl url(downloadUrl);
-    if (!url.isValid() || url.scheme().trimmed().isEmpty()) {
-        m_snapshot.location.clear();
-        m_snapshot.locationDetail =
-            locationLookupError(m_snapshot.publicIp, QString("invalid Geo DB downloadUrl: %1").arg(downloadUrl));
-        return;
-    }
-
-    QNetworkRequest request(url);
-    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    auto *reply = m_networkManager.get(request);
-    m_geoDbReply = reply;
-
-    m_snapshot.location.clear();
-    m_snapshot.locationDetail = locationLookupError(
-        m_snapshot.publicIp,
-        QString("Geo DB missing at %1; downloading from %2").arg(dbPath, downloadUrl));
-    emitSnapshotUpdate();
-
-    connect(reply, &QNetworkReply::finished, this, [this, reply, dbPath, downloadUrl]() {
-        if (m_geoDbReply != reply) {
-            reply->deleteLater();
-            return;
-        }
-        m_geoDbReply = nullptr;
-
-        if (reply->error() != QNetworkReply::NoError) {
-            m_snapshot.location.clear();
-            m_snapshot.locationDetail = locationLookupError(
-                m_snapshot.publicIp,
-                QString("failed to download Geo DB from %1: %2").arg(downloadUrl, reply->errorString()));
+    const QString publicIp = m_snapshot.publicIp;
+    const GeoIpResolveResult immediate = m_geoIpProvider->readLocation(
+        publicIp,
+        [this, publicIp](const GeoIpResolveResult &asyncResult) {
+            if (publicIp != m_snapshot.publicIp) {
+                return;
+            }
+            applyGeoIpResolveResult(asyncResult);
             emitSnapshotUpdate();
-            reply->deleteLater();
-            return;
-        }
-
-        const QByteArray payload = reply->readAll();
-        if (payload.isEmpty()) {
-            m_snapshot.location.clear();
-            m_snapshot.locationDetail =
-                locationLookupError(m_snapshot.publicIp, QString("downloaded empty Geo DB payload from %1").arg(downloadUrl));
-            emitSnapshotUpdate();
-            reply->deleteLater();
-            return;
-        }
-
-        QSaveFile file(dbPath);
-        if (!file.open(QIODevice::WriteOnly)) {
-            m_snapshot.location.clear();
-            m_snapshot.locationDetail =
-                locationLookupError(m_snapshot.publicIp, QString("failed to open %1 for write").arg(dbPath));
-            emitSnapshotUpdate();
-            reply->deleteLater();
-            return;
-        }
-        if (file.write(payload) != payload.size() || !file.commit()) {
-            m_snapshot.location.clear();
-            m_snapshot.locationDetail =
-                locationLookupError(m_snapshot.publicIp, QString("failed to persist downloaded Geo DB to %1").arg(dbPath));
-            emitSnapshotUpdate();
-            reply->deleteLater();
-            return;
-        }
-
-        updateLocationFromPublicIp();
-        emitSnapshotUpdate();
-        reply->deleteLater();
-    });
+        });
+    applyGeoIpResolveResult(immediate);
 }
 
 void DiagnosticsService::emitSnapshotUpdate() {

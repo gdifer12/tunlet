@@ -43,9 +43,20 @@ diagnostics:
       executable: "dig"
       args: ["-4", "+short", "TXT", "o-o.myaddr.l.google.com"]
     location:
-      enabled: true
-      databasePath: "tunlet/GeoLite2-City.mmdb"
-      downloadUrl: ""
+      mode: "local_db" # disabled | local_db | dynamic_cache
+      localDb:
+        databasePath: "tunlet/GeoLite2-City.mmdb"
+        asnDatabasePath: "tunlet/GeoLite2-ASN.mmdb"
+        downloadUrl: ""
+      dynamicCache:
+        provider: "ipwhois"
+        url: "https://ipwho.is/"
+        cachePath: "tunlet/geoip-cache.json"
+        baseRefreshDays: 14
+        randomShiftDays: 3
+        timeoutMs: 5000
+        refreshOnStartup: false # currently only the local cache is reread on startup/runtime refresh
+        allowManualRefresh: true # enables the dedicated "Refresh location data" action
 
 theme:
   qssPath: ""

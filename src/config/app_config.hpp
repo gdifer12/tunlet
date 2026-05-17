@@ -38,10 +38,33 @@ struct DiagnosticsCommandConfig {
     QStringList args;
 };
 
-struct DiagnosticsLocationConfig {
-    bool enabled = true;
+enum class DiagnosticsLocationMode {
+    Disabled,
+    LocalDb,
+    DynamicCache,
+};
+
+struct DiagnosticsLocationLocalDbConfig {
     QString databasePath;
+    QString asnDatabasePath;
     QString downloadUrl;
+};
+
+struct DiagnosticsLocationDynamicCacheConfig {
+    QString provider = "ipwhois";
+    QString url = "https://ipwho.is/";
+    QString cachePath;
+    int baseRefreshDays = 14;
+    int randomShiftDays = 3;
+    int timeoutMs = 5000;
+    bool refreshOnStartup = false;
+    bool allowManualRefresh = true;
+};
+
+struct DiagnosticsLocationConfig {
+    DiagnosticsLocationMode mode = DiagnosticsLocationMode::LocalDb;
+    DiagnosticsLocationLocalDbConfig localDb;
+    DiagnosticsLocationDynamicCacheConfig dynamicCache;
 };
 
 struct DiagnosticsConnectionConfig {

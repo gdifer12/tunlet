@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QUrl>
 
 #include <yaml-cpp/yaml.h>
 
@@ -147,6 +148,14 @@ QString defaultGeoDbPath(const QString &configRoute, const QString &fallbackBase
     return tunlet::app::resolveConfiguredPath("GeoLite2-City.mmdb", configRoute, fallbackBasePath);
 }
 
+QString defaultGeoAsnDbPath(const QString &configRoute, const QString &fallbackBasePath) {
+    return tunlet::app::resolveConfiguredPath("GeoLite2-ASN.mmdb", configRoute, fallbackBasePath);
+}
+
+QString defaultGeoCachePath(const QString &configRoute, const QString &fallbackBasePath) {
+    return tunlet::app::resolveConfiguredPath("geoip-cache.json", configRoute, fallbackBasePath);
+}
+
 QString formatConfigRoute(const QString &sourcePath) {
     QString configPath = sourcePath.trimmed();
     if (configPath.isEmpty()) {
@@ -205,6 +214,21 @@ config::DiagnosticsCommandConfig parseDiagnosticsCommand(const YAML::Node &node,
     return command;
 }
 
+config::DiagnosticsLocationMode parseLocationMode(const QString &modeText) {
+    const QString normalized = modeText.trimmed().toLower();
+    if (normalized.isEmpty() || normalized == "local_db") {
+        return config::DiagnosticsLocationMode::LocalDb;
+    }
+    if (normalized == "disabled") {
+        return config::DiagnosticsLocationMode::Disabled;
+    }
+    if (normalized == "dynamic_cache") {
+        return config::DiagnosticsLocationMode::DynamicCache;
+    }
+
+    throw std::runtime_error(QString("unsupported diagnostics.connection.location.mode: %1").arg(modeText).toStdString());
+}
+
 AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
     if (!root.IsMap()) {
         throw std::runtime_error("config root must be a map");
@@ -216,8 +240,11 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
     config.diagnostics.connection.ipv4 = defaultIpv4Command();
     config.diagnostics.connection.timing = defaultTimingCommand();
     config.diagnostics.connection.dns = defaultDnsCommand();
-    config.diagnostics.connection.location.enabled = true;
-    config.diagnostics.connection.location.databasePath = defaultGeoDbPath(config.configRoute, formatConfigRoute(sourcePath));
+    config.diagnostics.connection.location.mode = config::DiagnosticsLocationMode::LocalDb;
+    config.diagnostics.connection.location.localDb.databasePath = defaultGeoDbPath(config.configRoute, formatConfigRoute(sourcePath));
+    config.diagnostics.connection.location.localDb.asnDatabasePath = defaultGeoAsnDbPath(config.configRoute, formatConfigRoute(sourcePath));
+    config.diagnostics.connection.location.dynamicCache.cachePath =
+        defaultGeoCachePath(config.configRoute, formatConfigRoute(sourcePath));
 
     const YAML::Node clashApi = root["clashApi"];
     if (!clashApi || !clashApi.IsMap()) {
@@ -312,17 +339,108 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
                 if (!location.IsMap()) {
                     throw std::runtime_error("diagnostics.connection.location must be a map");
                 }
-                config.diagnostics.connection.location.enabled = readBool(location, "enabled", true);
+                if (location["mode"]) {
+                    config.diagnostics.connection.location.mode =
+                        parseLocationMode(QString::fromStdString(location["mode"].as<std::string>()));
+                } else if (location["enabled"]) {
+                    config.diagnostics.connection.location.mode =
+                        readBool(location, "enabled", true) ? config::DiagnosticsLocationMode::LocalDb
+                                                             : config::DiagnosticsLocationMode::Disabled;
+                }
+
                 if (location["databasePath"]) {
-                    config.diagnostics.connection.location.databasePath =
+                    config.diagnostics.connection.location.localDb.databasePath =
                         tunlet::app::resolveConfiguredPath(
                             QString::fromStdString(location["databasePath"].as<std::string>()),
                             config.configRoute,
                             fallbackBasePath);
                 }
                 if (location["downloadUrl"]) {
-                    config.diagnostics.connection.location.downloadUrl =
+                    config.diagnostics.connection.location.localDb.downloadUrl =
                         QString::fromStdString(location["downloadUrl"].as<std::string>()).trimmed();
+                }
+
+                if (const YAML::Node localDb = location["localDb"]) {
+                    if (!localDb.IsMap()) {
+                        throw std::runtime_error("diagnostics.connection.location.localDb must be a map");
+                    }
+                    if (localDb["databasePath"]) {
+                        config.diagnostics.connection.location.localDb.databasePath =
+                            tunlet::app::resolveConfiguredPath(
+                                QString::fromStdString(localDb["databasePath"].as<std::string>()),
+                                config.configRoute,
+                                fallbackBasePath);
+                    }
+                    if (localDb["asnDatabasePath"]) {
+                        config.diagnostics.connection.location.localDb.asnDatabasePath =
+                            tunlet::app::resolveConfiguredPath(
+                                QString::fromStdString(localDb["asnDatabasePath"].as<std::string>()),
+                                config.configRoute,
+                                fallbackBasePath);
+                    }
+                    if (localDb["downloadUrl"]) {
+                        config.diagnostics.connection.location.localDb.downloadUrl =
+                            QString::fromStdString(localDb["downloadUrl"].as<std::string>()).trimmed();
+                    }
+                }
+
+                if (const YAML::Node dynamicCache = location["dynamicCache"]) {
+                    if (!dynamicCache.IsMap()) {
+                        throw std::runtime_error("diagnostics.connection.location.dynamicCache must be a map");
+                    }
+                    if (dynamicCache["provider"]) {
+                        config.diagnostics.connection.location.dynamicCache.provider =
+                            QString::fromStdString(dynamicCache["provider"].as<std::string>()).trimmed();
+                    }
+                    if (dynamicCache["url"]) {
+                        config.diagnostics.connection.location.dynamicCache.url =
+                            QString::fromStdString(dynamicCache["url"].as<std::string>()).trimmed();
+                    }
+                    if (dynamicCache["cachePath"]) {
+                        config.diagnostics.connection.location.dynamicCache.cachePath =
+                            tunlet::app::resolveConfiguredPath(
+                                QString::fromStdString(dynamicCache["cachePath"].as<std::string>()),
+                                config.configRoute,
+                                fallbackBasePath);
+                    }
+                    config.diagnostics.connection.location.dynamicCache.baseRefreshDays =
+                        readInt(dynamicCache, "baseRefreshDays", config.diagnostics.connection.location.dynamicCache.baseRefreshDays);
+                    config.diagnostics.connection.location.dynamicCache.randomShiftDays =
+                        readInt(dynamicCache, "randomShiftDays", config.diagnostics.connection.location.dynamicCache.randomShiftDays);
+                    config.diagnostics.connection.location.dynamicCache.timeoutMs =
+                        readInt(dynamicCache, "timeoutMs", config.diagnostics.connection.location.dynamicCache.timeoutMs);
+                    config.diagnostics.connection.location.dynamicCache.refreshOnStartup =
+                        readBool(dynamicCache, "refreshOnStartup", config.diagnostics.connection.location.dynamicCache.refreshOnStartup);
+                    config.diagnostics.connection.location.dynamicCache.allowManualRefresh =
+                        readBool(dynamicCache, "allowManualRefresh", config.diagnostics.connection.location.dynamicCache.allowManualRefresh);
+                }
+
+                if (config.diagnostics.connection.location.localDb.databasePath.trimmed().isEmpty()) {
+                    throw std::runtime_error("diagnostics.connection.location.localDb.databasePath must not be empty");
+                }
+                if (config.diagnostics.connection.location.dynamicCache.provider.trimmed().isEmpty()) {
+                    throw std::runtime_error("diagnostics.connection.location.dynamicCache.provider must not be empty");
+                }
+                if (config.diagnostics.connection.location.dynamicCache.url.trimmed().isEmpty()) {
+                    throw std::runtime_error("diagnostics.connection.location.dynamicCache.url must not be empty");
+                }
+                if (config.diagnostics.connection.location.dynamicCache.cachePath.trimmed().isEmpty()) {
+                    throw std::runtime_error("diagnostics.connection.location.dynamicCache.cachePath must not be empty");
+                }
+                if (config.diagnostics.connection.location.dynamicCache.baseRefreshDays <= 0) {
+                    throw std::runtime_error("diagnostics.connection.location.dynamicCache.baseRefreshDays must be > 0");
+                }
+                if (config.diagnostics.connection.location.dynamicCache.randomShiftDays < 0) {
+                    throw std::runtime_error("diagnostics.connection.location.dynamicCache.randomShiftDays must be >= 0");
+                }
+                if (config.diagnostics.connection.location.dynamicCache.timeoutMs <= 0) {
+                    throw std::runtime_error("diagnostics.connection.location.dynamicCache.timeoutMs must be > 0");
+                }
+                if (config.diagnostics.connection.location.mode == config::DiagnosticsLocationMode::DynamicCache) {
+                    const QUrl geoUrl(config.diagnostics.connection.location.dynamicCache.url);
+                    if (!geoUrl.isValid() || geoUrl.scheme().compare("https", Qt::CaseInsensitive) != 0) {
+                        throw std::runtime_error("diagnostics.connection.location.dynamicCache.url must be a valid https URL");
+                    }
                 }
             }
         }

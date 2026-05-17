@@ -44,9 +44,20 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "      executable: dig\n"
         << "      args: [-4, +short, TXT, o-o.myaddr.l.google.com]\n"
         << "    location:\n"
-        << "      enabled: true\n"
-        << "      databasePath: geo/GeoLite2-City.mmdb\n"
-        << "      downloadUrl: https://example.test/GeoLite2-City.mmdb\n"
+        << "      mode: dynamic_cache\n"
+        << "      localDb:\n"
+        << "        databasePath: geo/GeoLite2-City.mmdb\n"
+        << "        asnDatabasePath: geo/GeoLite2-ASN.mmdb\n"
+        << "        downloadUrl: https://example.test/GeoLite2-City.mmdb\n"
+        << "      dynamicCache:\n"
+        << "        provider: ipwhois\n"
+        << "        url: https://ipwho.is/\n"
+        << "        cachePath: geo/geoip-cache.json\n"
+        << "        baseRefreshDays: 14\n"
+        << "        randomShiftDays: 3\n"
+        << "        timeoutMs: 5000\n"
+        << "        refreshOnStartup: false\n"
+        << "        allowManualRefresh: true\n"
         << "editing:\n"
         << "  createBackup: false\n"
         << "tray:\n"
@@ -73,15 +84,24 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     REQUIRE(config.diagnostics.refreshIntervalMs == 1234);
     REQUIRE(config.diagnostics.connection.ipv4.executable == "curl");
     REQUIRE(config.diagnostics.connection.dns.executable == "dig");
-    REQUIRE(config.diagnostics.connection.location.enabled == true);
-    REQUIRE(config.diagnostics.connection.location.databasePath == "/tmp/tunlet-root/geo/GeoLite2-City.mmdb");
-    REQUIRE(config.diagnostics.connection.location.downloadUrl == "https://example.test/GeoLite2-City.mmdb");
+    REQUIRE(config.diagnostics.connection.location.mode == tunlet::config::DiagnosticsLocationMode::DynamicCache);
+    REQUIRE(config.diagnostics.connection.location.localDb.databasePath == "/tmp/tunlet-root/geo/GeoLite2-City.mmdb");
+    REQUIRE(config.diagnostics.connection.location.localDb.asnDatabasePath == "/tmp/tunlet-root/geo/GeoLite2-ASN.mmdb");
+    REQUIRE(config.diagnostics.connection.location.localDb.downloadUrl == "https://example.test/GeoLite2-City.mmdb");
+    REQUIRE(config.diagnostics.connection.location.dynamicCache.provider == "ipwhois");
+    REQUIRE(config.diagnostics.connection.location.dynamicCache.url == "https://ipwho.is/");
+    REQUIRE(config.diagnostics.connection.location.dynamicCache.cachePath == "/tmp/tunlet-root/geo/geoip-cache.json");
+    REQUIRE(config.diagnostics.connection.location.dynamicCache.baseRefreshDays == 14);
+    REQUIRE(config.diagnostics.connection.location.dynamicCache.randomShiftDays == 3);
+    REQUIRE(config.diagnostics.connection.location.dynamicCache.timeoutMs == 5000);
+    REQUIRE(config.diagnostics.connection.location.dynamicCache.refreshOnStartup == false);
+    REQUIRE(config.diagnostics.connection.location.dynamicCache.allowManualRefresh == true);
     REQUIRE(config.editing.createBackup == false);
     REQUIRE(config.tray.keepRunningWithoutWindow == false);
     REQUIRE(config.tray.startHidden == true);
 }
 
-TEST_CASE("ConfigLoader derives default GeoLite path from config directory", "[config]") {
+TEST_CASE("ConfigLoader derives default GeoIP paths from config directory", "[config]") {
     QTemporaryDir dir;
     REQUIRE(dir.isValid());
 
@@ -107,9 +127,33 @@ TEST_CASE("ConfigLoader derives default GeoLite path from config directory", "[c
     const auto config = tunlet::config::ConfigLoader::loadFromPath(configPath);
     REQUIRE(config.configRoute == dir.path());
     REQUIRE(config.ruleSets.forceProxyPath == dir.path() + "/force-proxy.json");
-    REQUIRE(config.diagnostics.connection.location.databasePath == dir.path() + "/GeoLite2-City.mmdb");
+    REQUIRE(config.diagnostics.connection.location.mode == tunlet::config::DiagnosticsLocationMode::LocalDb);
+    REQUIRE(config.diagnostics.connection.location.localDb.databasePath == dir.path() + "/GeoLite2-City.mmdb");
+    REQUIRE(config.diagnostics.connection.location.localDb.asnDatabasePath == dir.path() + "/GeoLite2-ASN.mmdb");
+    REQUIRE(config.diagnostics.connection.location.dynamicCache.cachePath == dir.path() + "/geoip-cache.json");
     REQUIRE(config.tray.keepRunningWithoutWindow == true);
     REQUIRE(config.tray.startHidden == false);
+}
+
+TEST_CASE("ConfigLoader supports legacy location enabled/databasePath fields", "[config]") {
+    const QString config = QString()
+        + "clashApi:\n"
+        + "  host: 127.0.0.1\n"
+        + "  port: 9090\n"
+        + "ruleSets:\n"
+        + "  forceProxyPath: /tmp/force-proxy.json\n"
+        + "  forceDirectPath: /tmp/force-direct.json\n"
+        + "  autoProxyPath: /tmp/auto-proxy.json\n"
+        + "  autoDirectPath: /tmp/auto-direct.json\n"
+        + "diagnostics:\n"
+        + "  connection:\n"
+        + "    location:\n"
+        + "      enabled: false\n"
+        + "      databasePath: /tmp/GeoLite2-City.mmdb\n";
+
+    const auto parsed = tunlet::config::ConfigLoader::loadFromData(config, "/tmp/tunlet/config.yaml");
+    REQUIRE(parsed.diagnostics.connection.location.mode == tunlet::config::DiagnosticsLocationMode::Disabled);
+    REQUIRE(parsed.diagnostics.connection.location.localDb.databasePath == "/tmp/GeoLite2-City.mmdb");
 }
 
 TEST_CASE("ConfigLoader can disable built-in default profiles", "[config]") {

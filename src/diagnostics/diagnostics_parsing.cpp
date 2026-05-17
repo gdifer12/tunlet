@@ -194,4 +194,64 @@ QString parseDnsOutput(const QByteArray &output, QString *failureReason) {
     return cleanedLines.join(" | ");
 }
 
+ParsedGeoIpApiResponse parseIpWhoisResponse(const QByteArray &output, const QString &publicIp, QString *failureReason) {
+    ParsedGeoIpApiResponse result;
+
+    QJsonParseError parseError;
+    const QJsonDocument json = QJsonDocument::fromJson(output, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !json.isObject()) {
+        if (failureReason) {
+            *failureReason = parseError.error == QJsonParseError::NoError ? "GeoIP response was not a JSON object"
+                                                                          : parseError.errorString();
+        }
+        return result;
+    }
+
+    const QJsonObject object = json.object();
+    if (object.value("success").isBool() && !object.value("success").toBool()) {
+        const QString providerMessage = object.value("message").toString().trimmed();
+        if (failureReason) {
+            *failureReason = providerMessage.isEmpty() ? "GeoIP provider reported success=false" : providerMessage;
+        }
+        return result;
+    }
+
+    GeoLocationRecord record;
+    record.publicIp = publicIp;
+    record.country = firstJsonString(object, {"country"});
+    record.countryCode = firstJsonString(object, {"country_code"});
+    record.region = firstJsonString(object, {"region"});
+    record.city = firstJsonString(object, {"city"});
+    record.timezone = firstJsonString(object, {"timezone.id", "timezone"});
+    record.org = firstJsonString(object, {"connection.org"});
+    record.isp = firstJsonString(object, {"connection.isp"});
+
+    const QJsonValue asnValue = object.value("connection").toObject().value("asn");
+    if (asnValue.isDouble()) {
+        record.asn = QString::number(asnValue.toInteger());
+    } else if (asnValue.isString()) {
+        record.asn = asnValue.toString().trimmed();
+    }
+
+    const QJsonValue latitudeValue = object.value("latitude");
+    const QJsonValue longitudeValue = object.value("longitude");
+    if (latitudeValue.isDouble() && longitudeValue.isDouble()) {
+        record.latitude = latitudeValue.toDouble();
+        record.longitude = longitudeValue.toDouble();
+        record.hasCoordinates = true;
+    }
+
+    if (record.country.isEmpty() && record.region.isEmpty() && record.city.isEmpty()) {
+        if (failureReason) {
+            *failureReason = "GeoIP response did not contain usable location fields";
+        }
+        return result;
+    }
+
+    result.ok = true;
+    result.record = record;
+    result.raw = object;
+    return result;
+}
+
 }  // namespace tunlet::diagnostics

@@ -28,3 +28,23 @@ TEST_CASE("parseDnsOutput cleans dig TXT responses", "[diagnostics]") {
 
     REQUIRE(parsed == "ns1.google.com | edns0-client-subnet 0.0.0.0/0");
 }
+
+TEST_CASE("parseIpWhoisResponse normalizes provider fields", "[diagnostics]") {
+    QString failureReason;
+    const auto parsed = tunlet::diagnostics::parseIpWhoisResponse(
+        R"({"success":true,"country":"Netherlands","country_code":"NL","region":"North Holland","city":"Amsterdam","latitude":52.37,"longitude":4.89,"timezone":{"id":"Europe/Amsterdam"},"connection":{"asn":12345,"org":"Example Org","isp":"Example ISP"}})",
+        "203.0.113.20",
+        &failureReason);
+
+    REQUIRE(parsed.ok);
+    REQUIRE(parsed.record.publicIp == "203.0.113.20");
+    REQUIRE(parsed.record.country == "Netherlands");
+    REQUIRE(parsed.record.countryCode == "NL");
+    REQUIRE(parsed.record.region == "North Holland");
+    REQUIRE(parsed.record.city == "Amsterdam");
+    REQUIRE(parsed.record.timezone == "Europe/Amsterdam");
+    REQUIRE(parsed.record.asn == "12345");
+    REQUIRE(parsed.record.org == "Example Org");
+    REQUIRE(parsed.record.isp == "Example ISP");
+    REQUIRE(parsed.record.hasCoordinates);
+}

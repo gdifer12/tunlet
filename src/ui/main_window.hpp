@@ -111,6 +111,7 @@ private:
     void setRuleBanner(const QString &title, const QString &message, const QString &tone);
     void setSettingsBanner(const QString &text, const QString &tone);
     void repolish(QWidget *widget);
+    void positionFooterIpBadge();
     void setCurrentPage(int index);
     void setSelectedProfileName(const QString &profileName);
     bool hasProfile(const QString &profileName) const;
@@ -155,6 +156,9 @@ private:
     QLabel *m_lastReloadDetail = nullptr;
     QLabel *m_connectionEndpointValue = nullptr;
     QLabel *m_connectionDiagnosticsValue = nullptr;
+    QLabel *m_connectionDelayDnsValue = nullptr;
+    QLabel *m_connectionDelayConnectValue = nullptr;
+    QLabel *m_connectionDelayTlsValue = nullptr;
     QLabel *m_connectionTunValue = nullptr;
     QLabel *m_connectionDnsValue = nullptr;
     QLabel *m_connectionRoutingValue = nullptr;
@@ -166,6 +170,7 @@ private:
     QLabel *m_modeTriggerValueLabel = nullptr;
     QLabel *m_modeTriggerSubLabel = nullptr;
     QLabel *m_modeTriggerCaretLabel = nullptr;
+    QPushButton *m_refreshLocationDataButton = nullptr;
 
     QLabel *m_rulePageStatusLabel = nullptr;
     QLabel *m_ruleEditorTitleLabel = nullptr;
@@ -196,6 +201,11 @@ private:
     QLabel *m_stateLastRefreshValue = nullptr;
     QLabel *m_stateLastDetailValue = nullptr;
     QLabel *m_stateExternalIpValue = nullptr;
+    QLabel *m_stateLocationValue = nullptr;
+    QLabel *m_stateAsnOrgValue = nullptr;
+    QLabel *m_stateLocationSourceValue = nullptr;
+    QLabel *m_stateLocationUpdatedValue = nullptr;
+    QLabel *m_stateLocationRefreshValue = nullptr;
     QLabel *m_stateTrafficValue = nullptr;
     QLabel *m_stateModeListValue = nullptr;
     QLabel *m_settingsStatusLabel = nullptr;
@@ -203,7 +213,9 @@ private:
     QScrollArea *m_settingsPageScrollArea = nullptr;
 
     QLabel *m_footerLatencyValue = nullptr;
+    QWidget *m_footerIpItem = nullptr;
     QLabel *m_footerIpValue = nullptr;
+    QLabel *m_footerIpLocationBadgeLabel = nullptr;
     QLabel *m_footerDnsValue = nullptr;
     QLabel *m_footerReloadValue = nullptr;
     QLabel *m_recentActionLabel = nullptr;

@@ -72,15 +72,20 @@ Top-level keys:
 
 `configRoute` is the base directory used to resolve relative file paths in the config, for example `~/.config`.
 
-`diagnostics.connection` configures the three external probes and the local GeoLite2 database:
+`diagnostics.connection` configures the three external probes and the GeoIP backend:
 
 - `ipv4`: command used to resolve public IPv4
 - `timing`: command used to resolve DNS/connect/TLS/total delay
 - `dns`: command used to resolve DNS TXT diagnostics
-- `location.databasePath`: local `GeoLite2-City.mmdb` path used to map the resolved IP to a location
-- `location.downloadUrl`: optional URL to a ready-to-use `.mmdb`; if `databasePath` is missing, tunlet creates the parent directory and downloads the DB on demand
+- `location.mode`: `disabled`, `local_db`, or `dynamic_cache`
+- `location.localDb.databasePath`: local `GeoLite2-City.mmdb` path used to map the resolved IP to a location
+- `location.localDb.asnDatabasePath`: optional local `GeoLite2-ASN.mmdb` path used to enrich ASN/org data
+- `location.localDb.downloadUrl`: optional URL to a ready-to-use city `.mmdb`; if `databasePath` is missing, tunlet creates the parent directory and downloads the DB on demand
+- `location.dynamicCache.*`: HTTPS GeoIP provider settings, JSON cache path, TTL, jitter, and manual refresh behavior
 
-Location lookup uses the MaxMind GeoLite2 City database format. In many setups you should expect to obtain `GeoLite2-City.mmdb` manually and place it at `location.databasePath`. You should download GeoLite2 City from MaxMind using your own MaxMind account ([GeoLite2 data © MaxMind](https://www.maxmind.com/en/geolite-free-ip-geolocation-data)). The optional `downloadUrl` exists only for explicit auto-bootstrap setups where you already control a compatible `.mmdb` download source.
+`local_db` uses the MaxMind GeoLite2 database format. In many setups you should expect to obtain `GeoLite2-City.mmdb` manually and place it at `location.localDb.databasePath`. You should download GeoLite2 City from MaxMind using your own MaxMind account ([GeoLite2 data © MaxMind](https://www.maxmind.com/en/geolite-free-ip-geolocation-data)). The optional `downloadUrl` exists only for explicit auto-bootstrap setups where you already control a compatible `.mmdb` download source.
+
+`dynamic_cache` resolves location through an external HTTPS API and stores normalized responses in a local JSON cache. The default provider is `ipwhois` via `https://ipwho.is/`. Cache entries are keyed by provider + public IP and reused until explicitly refreshed. Normal runtime refreshes re-read the local cache only; the dedicated `Refresh location data` action updates the single record for the current public IP. If refresh fails and a stale cache entry exists, tunlet keeps using the stale location and marks it as such in the UI.
 
 `clashApi.profiles` adds extra named mode mappings on top of the built-in default profiles unless `clashApi.disableDefaultProfiles` is set to `true`:
 
