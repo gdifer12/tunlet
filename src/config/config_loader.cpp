@@ -264,6 +264,10 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
 
     config.clashApi.host = clashApi["host"] ? QString::fromStdString(clashApi["host"].as<std::string>()) : QString("127.0.0.1");
     config.clashApi.port = requirePort(clashApi, "port", "clashApi");
+    config.clashApi.modeSyncIntervalMs = readInt(clashApi, "modeSyncIntervalMs", config.clashApi.modeSyncIntervalMs);
+    if (config.clashApi.modeSyncIntervalMs < 0) {
+        throw std::runtime_error("clashApi.modeSyncIntervalMs must be >= 0");
+    }
     config.clashApi.disableDefaultProfiles = readBool(clashApi, "disableDefaultProfiles", false);
     if (!config.clashApi.disableDefaultProfiles) {
         config.clashApi.profiles = defaultProfiles();

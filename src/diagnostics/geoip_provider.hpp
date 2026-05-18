@@ -59,6 +59,7 @@ public:
 
     virtual void updateConfig(const config::DiagnosticsLocationConfig &config) = 0;
     virtual GeoIpResolveResult readLocation(const QString &publicIp, GeoIpResolveCallback callback) = 0;
+    virtual GeoIpResolveResult bootstrapLocationOnMiss(const QString &publicIp, GeoIpResolveCallback callback) = 0;
     virtual GeoIpResolveResult refreshLocationData(const QString &publicIp, GeoIpResolveCallback callback) = 0;
     virtual void cancelPending() = 0;
 };

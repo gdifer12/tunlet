@@ -8,6 +8,7 @@ It is intentionally not a VPN manager, service manager, config generator, or net
 
 - Single Clash API endpoint with built-in logical `direct`, `proxy`, and `auto` profiles by default
 - Additional named mode profiles configurable in YAML
+- Optional background current-mode synchronization against the Clash API
 - Tray menu for quick switching and background runtime refresh
 - Compact main window for control, diagnostics, and JSON rule-set editing
 - JSON validation and safe-save with optional backups
@@ -86,7 +87,7 @@ Top-level keys:
 
 `local_db` uses the MaxMind GeoLite2 database format. In many setups you should expect to obtain `GeoLite2-City.mmdb` manually and place it at `location.localDb.databasePath`. You should download GeoLite2 City from MaxMind using your own MaxMind account ([GeoLite2 data © MaxMind](https://www.maxmind.com/en/geolite-free-ip-geolocation-data)). The optional `downloadUrl` exists only for explicit auto-bootstrap setups where you already control a compatible `.mmdb` download source.
 
-`dynamic_cache` resolves location through an external HTTPS API and stores normalized responses in a local JSON cache. The default provider is `ipwhois` via `https://ipwho.is/`. Cache entries are keyed by provider + public IP and reused until explicitly refreshed. Normal runtime refreshes re-read the local cache only; the dedicated `Refresh location data` action updates the single record for the current public IP. If refresh fails and a stale cache entry exists, tunlet keeps using the stale location and marks it as such in the UI.
+`dynamic_cache` resolves location through an external HTTPS API and stores normalized responses in a local JSON cache. The default provider is `ipwhois` via `https://ipwho.is/`. Cache entries are keyed by provider + public IP and reused until explicitly refreshed. Normal runtime refreshes re-read the local cache only. The exception is cold-miss bootstrap: on initial startup and after a real mode switch, tunlet will fetch and persist the current IP if no cache entry exists yet. The dedicated `Refresh location data` action still remains the explicit way to refresh the current record. If refresh fails and a stale cache entry exists, tunlet keeps using the stale location and marks it as such in the UI.
 
 `clashApi.profiles` adds extra named mode mappings on top of the built-in default profiles unless `clashApi.disableDefaultProfiles` is set to `true`:
 
@@ -99,6 +100,8 @@ Each extra profile may define:
 - `name`
 - `mode`
 - `desc`
+
+`clashApi.modeSyncIntervalMs` controls how often tunlet re-reads the current backend mode from the Clash API in the background. Use `0` to disable background mode sync.
 
 This avoids hardcoding the complete list of supported mode values in the UI.
 
@@ -119,6 +122,7 @@ This avoids hardcoding the complete list of supported mode values in the UI.
 
 - The app loads YAML config at startup and validates required fields.
 - The current Clash mode is shown prominently and can be switched through configured profiles.
+- `Refresh runtime` and optional background mode sync both re-read the current Clash mode so UI and tray can catch external mode changes.
 - Additional profiles are listed and can be switched from the main window or tray menu.
 - The UI also shows the `mode-list` reported by `/configs`, so you can see which backend modes are actually available.
 - Rule-set files are edited as JSON text, validated before save, and written via safe-save semantics.

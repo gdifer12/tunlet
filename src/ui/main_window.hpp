@@ -110,6 +110,7 @@ private:
     void updateRuleFileTrigger();
     void showActionMessage(const QString &message, int timeoutMs = 0);
     void setStatusPill(QLabel *label, const QString &text, const QString &tone);
+    void setModeBanner(const QString &title, const QString &message, const QString &tone);
     void setRuleBanner(const QString &title, const QString &message, const QString &tone);
     void setSettingsBanner(const QString &text, const QString &tone);
     void repolish(QWidget *widget);
@@ -164,6 +165,9 @@ private:
     QLabel *m_selectedProfileDetail = nullptr;
     QLabel *m_lastReloadValue = nullptr;
     QLabel *m_lastReloadDetail = nullptr;
+    QLabel *m_modeBannerTitleLabel = nullptr;
+    QLabel *m_modeBannerMessageLabel = nullptr;
+    QLabel *m_modeBannerStateLabel = nullptr;
     QLabel *m_connectionEndpointValue = nullptr;
     QLabel *m_connectionDiagnosticsValue = nullptr;
     QLabel *m_connectionDelayDnsValue = nullptr;

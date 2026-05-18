@@ -117,7 +117,7 @@ DiagnosticsService::DiagnosticsService(const config::AppConfig &config, clash::C
     : QObject(parent), m_config(config), m_client(client) {
     connect(m_client, &clash::ClashApiClient::healthCheckFinished, this, &DiagnosticsService::handleHealthResult);
     connect(m_client, &clash::ClashApiClient::trafficFinished, this, &DiagnosticsService::handleTrafficResult);
-    connect(&m_timer, &QTimer::timeout, this, &DiagnosticsService::refreshNow);
+    connect(&m_timer, &QTimer::timeout, this, qOverload<>(&DiagnosticsService::refreshNow));
     rebuildGeoIpProvider();
     updateConfigurationSnapshot();
 }
@@ -131,10 +131,14 @@ void DiagnosticsService::start() {
     }
 
     m_timer.start(m_config.diagnostics.refreshIntervalMs);
-    refreshNow();
+    refreshNow(RefreshOrigin::StartupBootstrap);
 }
 
 void DiagnosticsService::refreshNow() {
+    refreshNow(RefreshOrigin::RuntimeReread);
+}
+
+void DiagnosticsService::refreshNow(RefreshOrigin origin) {
     if (!m_config.diagnostics.enabled) {
         return;
     }
@@ -147,7 +151,7 @@ void DiagnosticsService::refreshNow() {
     m_snapshot.externalDetail = "Refreshing connection diagnostics";
     emitSnapshotUpdate();
 
-    startIpv4Probe(generation);
+    startIpv4Probe(generation, origin);
     startTimingProbe(generation);
     startDnsProbe(generation);
 }
@@ -231,7 +235,7 @@ void DiagnosticsService::observeModeStatus(const tunlet::clash::ModeStatus &stat
     }
 
     m_lastObservedModeValue = status.currentModeValue;
-    refreshNow();
+    refreshNow(RefreshOrigin::ModeChangeBootstrap);
 }
 
 void DiagnosticsService::handleHealthResult(const clash::HealthCheckResult &result) {
@@ -352,7 +356,7 @@ void DiagnosticsService::rebuildGeoIpProvider() {
     m_geoIpProvider = createGeoIpProvider(m_config.diagnostics.connection.location, &m_networkManager, this);
 }
 
-void DiagnosticsService::startIpv4Probe(quint64 generation) {
+void DiagnosticsService::startIpv4Probe(quint64 generation, RefreshOrigin origin) {
     abortProbe(m_ipv4Process);
 
     auto *process = new QProcess(this);
@@ -388,7 +392,7 @@ void DiagnosticsService::startIpv4Probe(quint64 generation) {
     connect(process,
             qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             this,
-            [this, process, generation](int, QProcess::ExitStatus) {
+            [this, process, generation, origin](int, QProcess::ExitStatus) {
                 const QByteArray stdOut = process->readAllStandardOutput();
                 const QByteArray stdErr = process->readAllStandardError();
                 if (process->property("handledError").toBool()) {
@@ -410,7 +414,7 @@ void DiagnosticsService::startIpv4Probe(quint64 generation) {
                         m_snapshot.publicIp = ip;
                         m_snapshot.publicIpDetail = QString("Resolved via %1").arg(commandName(m_config.diagnostics.connection.ipv4));
                         m_snapshot.externalDetail = QString("Public IP updated: %1").arg(ip);
-                        readLocationFromPublicIp();
+                        readLocationFromPublicIp(origin);
                         emitSnapshotUpdate();
                         process->deleteLater();
                         return;
@@ -648,7 +652,7 @@ void DiagnosticsService::applyGeoIpResolveResult(const GeoIpResolveResult &resul
     }
 }
 
-void DiagnosticsService::readLocationFromPublicIp() {
+void DiagnosticsService::readLocationFromPublicIp(RefreshOrigin origin) {
     if (!m_geoIpProvider) {
         applyGeoIpResolveResult({.state = GeoIpResolveState::Unavailable, .detail = "Location provider unavailable."});
         return;
@@ -660,15 +664,19 @@ void DiagnosticsService::readLocationFromPublicIp() {
     }
 
     const QString publicIp = m_snapshot.publicIp;
-    const GeoIpResolveResult immediate = m_geoIpProvider->readLocation(
-        publicIp,
-        [this, publicIp](const GeoIpResolveResult &asyncResult) {
-            if (publicIp != m_snapshot.publicIp) {
-                return;
-            }
-            applyGeoIpResolveResult(asyncResult);
-            emitSnapshotUpdate();
-        });
+    const bool shouldBootstrapDynamicCacheMiss =
+        m_config.diagnostics.connection.location.mode == config::DiagnosticsLocationMode::DynamicCache &&
+        (origin == RefreshOrigin::StartupBootstrap || origin == RefreshOrigin::ModeChangeBootstrap);
+    const auto callback = [this, publicIp](const GeoIpResolveResult &asyncResult) {
+        if (publicIp != m_snapshot.publicIp) {
+            return;
+        }
+        applyGeoIpResolveResult(asyncResult);
+        emitSnapshotUpdate();
+    };
+    const GeoIpResolveResult immediate =
+        shouldBootstrapDynamicCacheMiss ? m_geoIpProvider->bootstrapLocationOnMiss(publicIp, callback)
+                                        : m_geoIpProvider->readLocation(publicIp, callback);
     applyGeoIpResolveResult(immediate);
 }
 

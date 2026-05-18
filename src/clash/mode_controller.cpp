@@ -15,9 +15,11 @@ ModeController::ModeController(const config::AppConfig &config, ClashApiClient *
     connect(m_client, &ClashApiClient::healthCheckFinished, this, &ModeController::handleHealthResult);
     connect(m_client, &ClashApiClient::modeStateFinished, this, &ModeController::handleModeState);
     connect(m_client, &ClashApiClient::modeSwitchFinished, this, &ModeController::handleModeSwitch);
+    connect(&m_modeSyncTimer, &QTimer::timeout, this, &ModeController::pollModeStatus);
 
     m_status.detail = "Not refreshed yet";
     m_status.endpointLabel = buildEndpointLabel(m_config.clashApi);
+    configureModeSyncTimer();
 }
 
 void ModeController::refreshStatus() {
@@ -48,6 +50,7 @@ void ModeController::switchMode(const QString &profileName) {
 void ModeController::updateConfig(const config::AppConfig &config) {
     m_config = config;
     m_status.endpointLabel = buildEndpointLabel(m_config.clashApi);
+    configureModeSyncTimer();
     if (!findProfile(m_pendingProfileName)) {
         m_pendingProfileName.clear();
         m_pendingModeValue.clear();
@@ -62,6 +65,25 @@ ModeStatus ModeController::status() const {
 
 QVector<config::ClashModeProfile> ModeController::profiles() const {
     return m_config.clashApi.profiles;
+}
+
+void ModeController::configureModeSyncTimer() {
+    if (m_config.clashApi.modeSyncIntervalMs <= 0) {
+        m_modeSyncTimer.stop();
+        return;
+    }
+
+    m_modeSyncTimer.setInterval(m_config.clashApi.modeSyncIntervalMs);
+    if (!m_modeSyncTimer.isActive()) {
+        m_modeSyncTimer.start();
+    }
+}
+
+void ModeController::pollModeStatus() {
+    if (m_status.busy) {
+        return;
+    }
+    refreshStatus();
 }
 
 void ModeController::handleHealthResult(const HealthCheckResult &result) {

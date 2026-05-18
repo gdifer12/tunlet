@@ -77,7 +77,10 @@ int main(int argc, char *argv[]) {
     trayController.setup(modeController.status(), modeController.profiles());
     QObject::connect(&trayController, &tunlet::ui::TrayController::openMainWindowRequested, &mainWindow, &tunlet::ui::MainWindow::showAndRaise);
     QObject::connect(&trayController, &tunlet::ui::TrayController::refreshRequested, &modeController, &tunlet::clash::ModeController::refreshStatus);
-    QObject::connect(&trayController, &tunlet::ui::TrayController::refreshRequested, &diagnosticsService, &tunlet::diagnostics::DiagnosticsService::refreshNow);
+    QObject::connect(&trayController,
+                     &tunlet::ui::TrayController::refreshRequested,
+                     &diagnosticsService,
+                     qOverload<>(&tunlet::diagnostics::DiagnosticsService::refreshNow));
     QObject::connect(&trayController, &tunlet::ui::TrayController::switchRequested, &modeController, &tunlet::clash::ModeController::switchMode);
     QObject::connect(&trayController, &tunlet::ui::TrayController::quitRequested, &app, &QApplication::quit);
     QObject::connect(&modeController, &tunlet::clash::ModeController::statusUpdated, &trayController, &tunlet::ui::TrayController::updateStatus);

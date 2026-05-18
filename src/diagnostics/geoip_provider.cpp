@@ -216,6 +216,10 @@ public:
         return {.state = GeoIpResolveState::Disabled, .detail = "Location lookup disabled in config."};
     }
 
+    GeoIpResolveResult bootstrapLocationOnMiss(const QString &, GeoIpResolveCallback) override {
+        return {.state = GeoIpResolveState::Disabled, .detail = "Location lookup disabled in config."};
+    }
+
     GeoIpResolveResult refreshLocationData(const QString &, GeoIpResolveCallback) override {
         return {.state = GeoIpResolveState::Disabled, .detail = "Location lookup disabled in config."};
     }
@@ -254,6 +258,10 @@ public:
             result.record.source = "local DB";
         }
         return result;
+    }
+
+    GeoIpResolveResult bootstrapLocationOnMiss(const QString &publicIp, GeoIpResolveCallback callback) override {
+        return readLocation(publicIp, callback);
     }
 
     GeoIpResolveResult refreshLocationData(const QString &publicIp, GeoIpResolveCallback callback) override {
@@ -497,29 +505,10 @@ public:
             return {.state = GeoIpResolveState::Unavailable, .detail = "Waiting for a usable public IP before resolving location."};
         }
 
-        const QString key = cacheKeyFor(m_config.dynamicCache.provider, publicIp);
-        loadCache();
-        const QString cacheWarning =
-            m_cacheError.isEmpty() ? QString() : QString(" Cache issue: %1.").arg(m_cacheError);
-
         GeoLocationRecord cachedRecord;
-        QJsonObject rawObject;
-        const bool hasRecord = readCachedRecord(key, &cachedRecord, &rawObject);
-        if (hasRecord) {
-            cachedRecord.stale = cachedRecord.nextRefreshAt.isValid() && cachedRecord.nextRefreshAt <= QDateTime::currentDateTimeUtc();
-            cachedRecord.source = formatGeoLocationSource(cachedRecord);
-        }
-
-        if (hasRecord) {
-            return {
-                .state = GeoIpResolveState::Ready,
-                .record = cachedRecord,
-                .detail = cachedRecord.stale
-                              ? QString("Loaded stale cached %1 location from %2")
-                                    .arg(m_config.dynamicCache.provider, m_config.dynamicCache.cachePath) + cacheWarning
-                              : QString("Loaded cached %1 location from %2")
-                                    .arg(m_config.dynamicCache.provider, m_config.dynamicCache.cachePath) + cacheWarning,
-            };
+        QString cacheWarning;
+        if (loadCachedLocation(publicIp, &cachedRecord, &cacheWarning)) {
+            return cachedLocationResult(cachedRecord, cacheWarning);
         }
 
         return {
@@ -529,23 +518,35 @@ public:
         };
     }
 
+    GeoIpResolveResult bootstrapLocationOnMiss(const QString &publicIp, GeoIpResolveCallback callback) override {
+        if (!isUsableIpAddress(publicIp)) {
+            return {.state = GeoIpResolveState::Unavailable, .detail = "Waiting for a usable public IP before resolving location."};
+        }
+
+        GeoLocationRecord cachedRecord;
+        QString cacheWarning;
+        if (loadCachedLocation(publicIp, &cachedRecord, &cacheWarning)) {
+            return cachedLocationResult(cachedRecord, cacheWarning);
+        }
+
+        return startLookup(publicIp,
+                           callback,
+                           QString("No cached %1 location entry for %2 in %3; bootstrapping via %4")
+                               .arg(m_config.dynamicCache.provider, publicIp, m_config.dynamicCache.cachePath, m_config.dynamicCache.url),
+                           QString("Created cached %1 location for %2 via %3")
+                               .arg(m_config.dynamicCache.provider, publicIp, m_config.dynamicCache.url),
+                           cacheWarning,
+                           nullptr);
+    }
+
     GeoIpResolveResult refreshLocationData(const QString &publicIp, GeoIpResolveCallback callback) override {
         if (!isUsableIpAddress(publicIp)) {
             return {.state = GeoIpResolveState::Unavailable, .detail = "Waiting for a usable public IP before refreshing location data."};
         }
 
-        const QString key = cacheKeyFor(m_config.dynamicCache.provider, publicIp);
-        loadCache();
-        const QString cacheWarning =
-            m_cacheError.isEmpty() ? QString() : QString(" Cache issue: %1.").arg(m_cacheError);
-
         GeoLocationRecord cachedRecord;
-        QJsonObject rawObject;
-        const bool hasRecord = readCachedRecord(key, &cachedRecord, &rawObject);
-        if (hasRecord) {
-            cachedRecord.stale = cachedRecord.nextRefreshAt.isValid() && cachedRecord.nextRefreshAt <= QDateTime::currentDateTimeUtc();
-            cachedRecord.source = formatGeoLocationSource(cachedRecord);
-        }
+        QString cacheWarning;
+        const bool hasRecord = loadCachedLocation(publicIp, &cachedRecord, &cacheWarning);
 
         if (!m_config.dynamicCache.allowManualRefresh) {
             if (hasRecord) {
@@ -560,22 +561,76 @@ public:
                     .detail = QString("Manual location data refresh is disabled and no cached location is available.%1").arg(cacheWarning)};
         }
 
+        return startLookup(publicIp,
+                           callback,
+                           QString("Refreshing location data for %1 via %2").arg(m_config.dynamicCache.provider, m_config.dynamicCache.url),
+                           QString("Updated %1 location via %2").arg(m_config.dynamicCache.provider, m_config.dynamicCache.url),
+                           cacheWarning,
+                           hasRecord ? &cachedRecord : nullptr);
+    }
+
+    void cancelPending() override {
+        if (!m_reply) {
+            return;
+        }
+        disconnect(m_reply, nullptr, this, nullptr);
+        m_reply->abort();
+        m_reply->deleteLater();
+        m_reply = nullptr;
+        m_pendingPublicIp.clear();
+        m_pendingCallback = {};
+        m_pendingSuccessDetail.clear();
+        m_pendingCachedRecord = {};
+        m_pendingHasStaleRecord = false;
+    }
+
+private:
+    bool loadCachedLocation(const QString &publicIp, GeoLocationRecord *record, QString *cacheWarning) {
+        const QString key = cacheKeyFor(m_config.dynamicCache.provider, publicIp);
+        loadCache();
+        if (cacheWarning) {
+            *cacheWarning = m_cacheError.isEmpty() ? QString() : QString(" Cache issue: %1.").arg(m_cacheError);
+        }
+
+        QJsonObject rawObject;
+        const bool hasRecord = readCachedRecord(key, record, &rawObject);
+        if (hasRecord && record) {
+            record->stale = record->nextRefreshAt.isValid() && record->nextRefreshAt <= QDateTime::currentDateTimeUtc();
+            record->source = formatGeoLocationSource(*record);
+        }
+        return hasRecord;
+    }
+
+    GeoIpResolveResult cachedLocationResult(const GeoLocationRecord &cachedRecord, const QString &cacheWarning) const {
+        return {
+            .state = GeoIpResolveState::Ready,
+            .record = cachedRecord,
+            .detail = cachedRecord.stale ? QString("Loaded stale cached %1 location from %2")
+                                               .arg(m_config.dynamicCache.provider, m_config.dynamicCache.cachePath) + cacheWarning
+                                         : QString("Loaded cached %1 location from %2")
+                                               .arg(m_config.dynamicCache.provider, m_config.dynamicCache.cachePath) + cacheWarning,
+        };
+    }
+
+    GeoIpResolveResult startLookup(const QString &publicIp,
+                                   const GeoIpResolveCallback &callback,
+                                   const QString &pendingDetail,
+                                   const QString &successDetail,
+                                   const QString &cacheWarning,
+                                   const GeoLocationRecord *fallbackRecord) {
         if (m_reply) {
-            m_pendingPublicIp = publicIp;
-            m_pendingCallback = callback;
-            if (hasRecord) {
-                cachedRecord.stale = true;
+            if (fallbackRecord) {
+                GeoLocationRecord staleRecord = *fallbackRecord;
+                staleRecord.stale = true;
                 return {
                     .state = GeoIpResolveState::Ready,
-                    .record = cachedRecord,
-                    .detail = QString("Refreshing location data for %1 via %2")
-                                  .arg(m_config.dynamicCache.provider, m_config.dynamicCache.url) + cacheWarning,
+                    .record = staleRecord,
+                    .detail = pendingDetail + cacheWarning,
                 };
             }
             return {
                 .state = GeoIpResolveState::Pending,
-                .detail = QString("Refreshing location data for %1 via %2").arg(m_config.dynamicCache.provider, m_config.dynamicCache.url) +
-                          cacheWarning,
+                .detail = pendingDetail + cacheWarning,
             };
         }
 
@@ -596,8 +651,9 @@ public:
         m_reply = m_networkManager->get(request);
         m_pendingPublicIp = publicIp;
         m_pendingCallback = callback;
-        m_pendingCachedRecord = hasRecord ? cachedRecord : GeoLocationRecord{};
-        m_pendingHasStaleRecord = hasRecord;
+        m_pendingSuccessDetail = successDetail;
+        m_pendingCachedRecord = fallbackRecord ? *fallbackRecord : GeoLocationRecord{};
+        m_pendingHasStaleRecord = fallbackRecord != nullptr;
 
         QTimer::singleShot(m_config.dynamicCache.timeoutMs, m_reply, [reply = QPointer<QNetworkReply>(m_reply)]() {
             if (reply && reply->isRunning()) {
@@ -637,16 +693,16 @@ public:
                     persistRecord(cacheKeyFor(m_config.dynamicCache.provider, m_pendingPublicIp), record, parsed.raw, &cacheFailure);
                     result.state = GeoIpResolveState::Ready;
                     result.record = record;
-                    result.detail = cacheFailure.isEmpty()
-                                        ? QString("Updated %1 location via %2").arg(m_config.dynamicCache.provider, m_config.dynamicCache.url)
-                                        : QString("Updated %1 location via %2, but failed to persist cache: %3")
-                                              .arg(m_config.dynamicCache.provider, m_config.dynamicCache.url, cacheFailure);
+                    result.detail = cacheFailure.isEmpty() ? m_pendingSuccessDetail
+                                                           : QString("%1, but failed to persist cache: %2")
+                                                                 .arg(m_pendingSuccessDetail, cacheFailure);
                 }
             }
 
             const GeoIpResolveCallback callback = m_pendingCallback;
             m_pendingPublicIp.clear();
             m_pendingCallback = {};
+            m_pendingSuccessDetail.clear();
             m_pendingCachedRecord = {};
             m_pendingHasStaleRecord = false;
             if (callback) {
@@ -655,38 +711,22 @@ public:
             reply->deleteLater();
         });
 
-        if (hasRecord) {
-            cachedRecord.stale = true;
+        if (fallbackRecord) {
+            GeoLocationRecord staleRecord = *fallbackRecord;
+            staleRecord.stale = true;
             return {
                 .state = GeoIpResolveState::Ready,
-                .record = cachedRecord,
-                .detail = QString("Refreshing location data for %1 via %2")
-                              .arg(m_config.dynamicCache.provider, m_config.dynamicCache.url) + cacheWarning,
+                .record = staleRecord,
+                .detail = pendingDetail + cacheWarning,
             };
         }
 
         return {
             .state = GeoIpResolveState::Pending,
-            .detail = QString("Refreshing location data for %1 via %2").arg(m_config.dynamicCache.provider, m_config.dynamicCache.url) +
-                      cacheWarning,
+            .detail = pendingDetail + cacheWarning,
         };
     }
 
-    void cancelPending() override {
-        if (!m_reply) {
-            return;
-        }
-        disconnect(m_reply, nullptr, this, nullptr);
-        m_reply->abort();
-        m_reply->deleteLater();
-        m_reply = nullptr;
-        m_pendingPublicIp.clear();
-        m_pendingCallback = {};
-        m_pendingCachedRecord = {};
-        m_pendingHasStaleRecord = false;
-    }
-
-private:
     void loadCache() {
         if (m_cacheLoaded) {
             return;
@@ -809,6 +849,7 @@ private:
     QPointer<QNetworkReply> m_reply;
     QString m_pendingPublicIp;
     GeoIpResolveCallback m_pendingCallback;
+    QString m_pendingSuccessDetail;
     GeoLocationRecord m_pendingCachedRecord;
     bool m_pendingHasStaleRecord = false;
 };

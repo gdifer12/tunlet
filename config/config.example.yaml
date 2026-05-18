@@ -3,6 +3,7 @@ configRoute: "~/.config"
 clashApi:
   host: "127.0.0.1"
   port: 21090
+  modeSyncIntervalMs: 0 # background Clash mode resync cadence; 0 disables automatic sync
   disableDefaultProfiles: false
   profiles:
     - name: "work"
@@ -55,7 +56,7 @@ diagnostics:
         baseRefreshDays: 14
         randomShiftDays: 3
         timeoutMs: 5000
-        refreshOnStartup: false # currently only the local cache is reread on startup/runtime refresh
+        refreshOnStartup: false # startup/runtime refreshes stay read-only; startup may still bootstrap one missing cache entry for the current IP
         allowManualRefresh: true # enables the dedicated "Refresh location data" action
 
 theme:

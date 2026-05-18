@@ -73,7 +73,9 @@ if(BUILD_TESTING)
         tests/config_file_service_tests.cpp
         tests/config_loader_tests.cpp
         tests/diagnostics_parsing_tests.cpp
+        tests/geoip_provider_tests.cpp
         tests/logical_mode_tests.cpp
+        tests/mode_selection_state_tests.cpp
         tests/ruleset_service_tests.cpp
     )
     target_link_libraries(

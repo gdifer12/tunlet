@@ -68,17 +68,24 @@ signals:
     void diagnosticsUpdated(const tunlet::diagnostics::DiagnosticsSnapshot &snapshot);
 
 private:
+    enum class RefreshOrigin {
+        RuntimeReread,
+        StartupBootstrap,
+        ModeChangeBootstrap,
+    };
+
     void handleTrafficResult(const clash::TrafficResult &result);
     void handleHealthResult(const clash::HealthCheckResult &result);
     void updateConfigurationSnapshot();
     void resetConnectionSnapshot(const QString &reason);
     void abortProbe(QPointer<QProcess> &process);
-    void startIpv4Probe(quint64 generation);
+    void refreshNow(RefreshOrigin origin);
+    void startIpv4Probe(quint64 generation, RefreshOrigin origin);
     void startTimingProbe(quint64 generation);
     void startDnsProbe(quint64 generation);
     void rebuildGeoIpProvider();
     void applyGeoIpResolveResult(const GeoIpResolveResult &result);
-    void readLocationFromPublicIp();
+    void readLocationFromPublicIp(RefreshOrigin origin);
     void emitSnapshotUpdate();
 
     config::AppConfig m_config;

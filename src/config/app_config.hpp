@@ -15,6 +15,7 @@ struct ClashModeProfile {
 struct ClashApiConfig {
     QString host = "127.0.0.1";
     quint16 port = 0;
+    int modeSyncIntervalMs = 0;
     bool disableDefaultProfiles = false;
     QVector<ClashModeProfile> profiles;
 };

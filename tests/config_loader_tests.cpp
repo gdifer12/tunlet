@@ -19,6 +19,7 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "clashApi:\n"
         << "  host: 127.0.0.1\n"
         << "  port: 9090\n"
+        << "  modeSyncIntervalMs: 15000\n"
         << "  disableDefaultProfiles: false\n"
         << "  profiles:\n"
         << "    - name: gaming\n"
@@ -87,6 +88,7 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     const auto config = tunlet::config::ConfigLoader::loadFromPath(configPath);
     REQUIRE(config.clashApi.host == "127.0.0.1");
     REQUIRE(config.clashApi.port == 9090);
+    REQUIRE(config.clashApi.modeSyncIntervalMs == 15000);
     REQUIRE(config.clashApi.disableDefaultProfiles == false);
     REQUIRE(config.clashApi.profiles.size() == 4);
     REQUIRE(config.clashApi.profiles.at(0).name == "direct");
@@ -160,6 +162,7 @@ TEST_CASE("ConfigLoader derives default GeoIP paths from config directory", "[co
 
     const auto config = tunlet::config::ConfigLoader::loadFromPath(configPath);
     REQUIRE(config.configRoute == dir.path());
+    REQUIRE(config.clashApi.modeSyncIntervalMs == 0);
     REQUIRE(config.ruleSets.forceProxyPath == dir.path() + "/force-proxy.json");
     REQUIRE(config.diagnostics.connection.location.mode == tunlet::config::DiagnosticsLocationMode::LocalDb);
     REQUIRE(config.diagnostics.connection.location.localDb.databasePath == dir.path() + "/GeoLite2-City.mmdb");
@@ -224,6 +227,21 @@ TEST_CASE("ConfigLoader can disable built-in default profiles", "[config]") {
     REQUIRE(parsed.clashApi.disableDefaultProfiles == true);
     REQUIRE(parsed.clashApi.profiles.size() == 1);
     REQUIRE(parsed.clashApi.profiles.at(0).name == "gaming");
+}
+
+TEST_CASE("ConfigLoader rejects negative mode sync interval", "[config]") {
+    const QString config = QString()
+        + "clashApi:\n"
+        + "  host: 127.0.0.1\n"
+        + "  port: 9090\n"
+        + "  modeSyncIntervalMs: -1\n"
+        + "ruleSets:\n"
+        + "  forceProxyPath: /tmp/force-proxy.json\n"
+        + "  forceDirectPath: /tmp/force-direct.json\n"
+        + "  autoProxyPath: /tmp/auto-proxy.json\n"
+        + "  autoDirectPath: /tmp/auto-direct.json\n";
+
+    REQUIRE_THROWS(tunlet::config::ConfigLoader::loadFromData(config, "/tmp/tunlet/config.yaml"));
 }
 
 TEST_CASE("ConfigLoader rejects legacy externalIp diagnostics schema", "[config]") {

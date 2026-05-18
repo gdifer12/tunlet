@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QObject>
 #include <QStringList>
+#include <QTimer>
 #include <QVector>
 
 namespace tunlet::clash {
@@ -39,6 +40,8 @@ signals:
     void operationFailed(const QString &message);
 
 private:
+    void configureModeSyncTimer();
+    void pollModeStatus();
     void handleHealthResult(const HealthCheckResult &result);
     void handleModeState(const ModeStateResult &result);
     void handleModeSwitch(const ModeSwitchResult &result);
@@ -50,6 +53,7 @@ private:
     ModeStatus m_status;
     QString m_pendingProfileName;
     QString m_pendingModeValue;
+    QTimer m_modeSyncTimer;
 };
 
 }  // namespace tunlet::clash

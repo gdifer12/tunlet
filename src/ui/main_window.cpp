@@ -1,5 +1,6 @@
 #include "ui/main_window.hpp"
 #include "ui/editor_highlighting.hpp"
+#include "ui/mode_selection_state.hpp"
 
 #include <QAbstractButton>
 #include <QApplication>
@@ -434,6 +435,7 @@ MainWindow::MainWindow(const config::AppConfig &config,
         updateModeSelectionUi();
     });
     connect(m_modeController, &clash::ModeController::operationFailed, this, [this](const QString &message) {
+        setModeBanner("Mode switch failed", message, "danger");
         showActionMessage(message, 5000);
         updateDashboardCards();
     });
@@ -896,6 +898,27 @@ QWidget *MainWindow::buildDashboardPage() {
     modeSummaryGrid->addWidget(buildSummaryItem(selectorCard, "Last reload", &m_lastReloadValue, &m_lastReloadDetail), 0, 1);
     selectorLayout->addLayout(modeSummaryGrid);
 
+    auto *modeBanner = new QWidget(selectorCard);
+    modeBanner->setObjectName("editorBanner");
+    modeBanner->setProperty("tone", "neutral");
+    auto *modeBannerLayout = new QHBoxLayout(modeBanner);
+    modeBannerLayout->setContentsMargins(14, 12, 14, 12);
+    modeBannerLayout->setSpacing(12);
+    auto *modeBannerCopy = new QVBoxLayout();
+    modeBannerCopy->setSpacing(4);
+    m_modeBannerTitleLabel = new QLabel("Mode synchronized", modeBanner);
+    m_modeBannerTitleLabel->setObjectName("bannerTitle");
+    m_modeBannerMessageLabel = new QLabel("Visible mode selection matches the backend state.", modeBanner);
+    m_modeBannerMessageLabel->setObjectName("bannerMessage");
+    m_modeBannerMessageLabel->setWordWrap(true);
+    modeBannerCopy->addWidget(m_modeBannerTitleLabel);
+    modeBannerCopy->addWidget(m_modeBannerMessageLabel);
+    modeBannerLayout->addLayout(modeBannerCopy, 1);
+    m_modeBannerStateLabel = new QLabel(modeBanner);
+    m_modeBannerStateLabel->setObjectName("statusPill");
+    modeBannerLayout->addWidget(m_modeBannerStateLabel, 0, Qt::AlignTop);
+    selectorLayout->addWidget(modeBanner);
+
     auto *actionRow = new QHBoxLayout();
     actionRow->setSpacing(10);
     auto *refreshButton = new QPushButton("Reload config", selectorCard);
@@ -1338,17 +1361,7 @@ void MainWindow::applyConfig(const config::AppConfig &config) {
 }
 
 void MainWindow::populateModeProfiles() {
-    const QString preferredSelection = m_selectedProfileName.isEmpty() ? m_lastStatus.currentProfileName : m_selectedProfileName;
-
-    if (!preferredSelection.isEmpty() && hasProfile(preferredSelection)) {
-        setSelectedProfileName(preferredSelection);
-    } else if (hasProfile(m_lastStatus.currentProfileName)) {
-        setSelectedProfileName(m_lastStatus.currentProfileName);
-    } else if (!m_modeController->profiles().isEmpty()) {
-        setSelectedProfileName(m_modeController->profiles().first().name);
-    } else {
-        setSelectedProfileName({});
-    }
+    setSelectedProfileName(syncModeProfileSelection(m_modeController->profiles(), m_lastStatus, m_selectedProfileName));
 }
 
 void MainWindow::populateRuleFiles() {
@@ -1883,6 +1896,22 @@ void MainWindow::setRuleBanner(const QString &title, const QString &message, con
     }
 }
 
+void MainWindow::setModeBanner(const QString &title, const QString &message, const QString &tone) {
+    if (m_modeBannerTitleLabel) {
+        m_modeBannerTitleLabel->setText(title);
+    }
+    if (m_modeBannerMessageLabel) {
+        m_modeBannerMessageLabel->setText(message);
+    }
+    setStatusPill(m_modeBannerStateLabel,
+                  tone == "danger" ? "Error" : tone == "warn" ? "Attention" : tone == "ok" ? "Live" : "Synced",
+                  tone);
+    if (m_modeBannerTitleLabel && m_modeBannerTitleLabel->parentWidget()) {
+        m_modeBannerTitleLabel->parentWidget()->setProperty("tone", tone);
+        repolish(m_modeBannerTitleLabel->parentWidget());
+    }
+}
+
 void MainWindow::setSettingsBanner(const QString &text, const QString &tone) {
     if (m_settingsStatusLabel) {
         m_settingsStatusLabel->setText(text);
@@ -2116,11 +2145,15 @@ void MainWindow::updateDashboardCards() {
     const QString trafficText =
         m_lastDiagnostics.trafficAvailable ? QString("%1\n%2").arg(m_lastDiagnostics.trafficSummary, m_lastDiagnostics.trafficDetail)
                                            : m_lastDiagnostics.trafficDetail;
+    const QString modeSyncText = m_config.clashApi.modeSyncIntervalMs > 0
+                                     ? QString("Mode sync %1").arg(formatRefreshInterval(m_config.clashApi.modeSyncIntervalMs))
+                                     : QString("Mode sync disabled");
     const QString diagnosticsText = m_config.diagnostics.enabled
-                                        ? QString("Every %1 · timeout %2 ms")
+                                        ? QString("Every %1 · timeout %2 ms · %3")
                                               .arg(formatRefreshInterval(m_config.diagnostics.refreshIntervalMs))
                                               .arg(m_config.diagnostics.requestTimeoutMs)
-                                        : QString("Disabled");
+                                              .arg(modeSyncText)
+                                        : QString("Disabled · %1").arg(modeSyncText);
     const QString dnsText = m_lastDiagnostics.dnsSummary;
     const QString connectionApiText = QString("%1 · %2").arg(apiSummary, endpoint);
     const QString delayDetailText = buildDelayBreakdown(m_lastDiagnostics);
@@ -2333,6 +2366,24 @@ void MainWindow::updateDashboardCards() {
 
 void MainWindow::onStatusUpdated(const clash::ModeStatus &status) {
     m_lastStatus = status;
+    populateModeProfiles();
+    if (!status.busy) {
+        if (status.reachable && !status.currentModeValue.isEmpty()) {
+            if (status.currentProfileName == "unknown" || status.currentProfileName.isEmpty()) {
+                setModeBanner("Mode not mapped",
+                              QString("Backend reports '%1', but no configured profile matches it.")
+                                  .arg(status.currentModeValue),
+                              "warn");
+            } else {
+                setModeBanner("Mode synchronized",
+                              QString("Profile %1 matches backend mode '%2'.")
+                                  .arg(displayModeName(status.currentProfileName), status.currentModeValue),
+                              "neutral");
+            }
+        } else if (!status.detail.trimmed().isEmpty() && status.detail != "Not refreshed yet") {
+            setModeBanner("Mode sync issue", status.detail, "warn");
+        }
+    }
     updateDashboardCards();
 }
 
