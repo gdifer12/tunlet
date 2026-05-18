@@ -32,7 +32,13 @@ QString displayModeName(QString value) {
 TrayController::TrayController(QObject *parent)
     : QObject(parent),
       m_trayIcon(new QSystemTrayIcon(QIcon(":/icons/tunlet.svg"), this)),
-      m_menu(new QMenu()) {}
+      m_menu(new QMenu()) {
+    connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::Trigger) {
+            emit openMainWindowRequested();
+        }
+    });
+}
 
 TrayController::~TrayController() = default;
 

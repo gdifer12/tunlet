@@ -840,15 +840,15 @@ QWidget *MainWindow::buildDashboardPage() {
     auto *selectorCard = new QWidget(page);
     selectorCard->setObjectName("card");
     auto *selectorLayout = new QVBoxLayout(selectorCard);
-    selectorLayout->setContentsMargins(18, 16, 18, 16);
-    selectorLayout->setSpacing(10);
+    selectorLayout->setContentsMargins(18, 14, 18, 14);
+    selectorLayout->setSpacing(8);
 
     auto *selectorHead = new QWidget(selectorCard);
     auto *selectorHeadLayout = new QHBoxLayout(selectorHead);
     selectorHeadLayout->setContentsMargins(0, 0, 0, 0);
     selectorHeadLayout->setSpacing(12);
     auto *selectorCopy = new QVBoxLayout();
-    selectorCopy->setSpacing(4);
+    selectorCopy->setSpacing(2);
     auto *selectorTitle = new QLabel("Connection mode", selectorHead);
     selectorTitle->setObjectName("cardTitleStrong");
     auto *selectorSubtitle = new QLabel("Immediate mode switch stays the main action of the window", selectorHead);
@@ -868,10 +868,10 @@ QWidget *MainWindow::buildDashboardPage() {
     m_modeTriggerButton->setMinimumHeight(72);
     m_modeTriggerButton->setCursor(Qt::PointingHandCursor);
     auto *modeTriggerLayout = new QHBoxLayout(m_modeTriggerButton);
-    modeTriggerLayout->setContentsMargins(14, 10, 14, 10);
+    modeTriggerLayout->setContentsMargins(14, 8, 14, 8);
     modeTriggerLayout->setSpacing(12);
     auto *modeTriggerCopy = new QVBoxLayout();
-    modeTriggerCopy->setSpacing(4);
+    modeTriggerCopy->setSpacing(2);
     auto *modeTriggerKey = new QLabel("Current mode", m_modeTriggerButton);
     modeTriggerKey->setObjectName("summaryKey");
     m_modeTriggerValueLabel = new QLabel("Unknown", m_modeTriggerButton);
@@ -893,7 +893,7 @@ QWidget *MainWindow::buildDashboardPage() {
 
     auto *modeSummaryGrid = new QGridLayout();
     modeSummaryGrid->setHorizontalSpacing(10);
-    modeSummaryGrid->setVerticalSpacing(8);
+    modeSummaryGrid->setVerticalSpacing(6);
     modeSummaryGrid->addWidget(buildSummaryItem(selectorCard, "Selected profile", &m_selectedProfileValue, &m_selectedProfileDetail), 0, 0);
     modeSummaryGrid->addWidget(buildSummaryItem(selectorCard, "Last reload", &m_lastReloadValue, &m_lastReloadDetail), 0, 1);
     selectorLayout->addLayout(modeSummaryGrid);
