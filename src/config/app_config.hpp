@@ -95,6 +95,36 @@ struct TrayConfig {
     bool startHidden = false;
 };
 
+struct UiTextSelectionConfig {
+    bool enableInformationalLabels = true;
+};
+
+struct UiKeyboardShortcutsConfig {
+    QString closeWindowPrimary = "Esc";
+    QString closeWindowSecondary = "Q";
+    QString nextPage = "Ctrl+Tab";
+    QString previousPage = "Ctrl+Shift+Tab";
+    QString pageMain = "1";
+    QString pageRules = "2";
+    QString pageSettings = "3";
+    QString openModeSelector = "M";
+    QString openRuleFileSelector = "R";
+    QString refreshRuntime = "F5";
+    QString refreshLocationData = "Shift+F5";
+    QString validateEditor = "Ctrl+Shift+V";
+    QString saveEditor = "Ctrl+S";
+    QString reloadEditor = "Ctrl+R";
+};
+
+struct UiKeyboardConfig {
+    UiKeyboardShortcutsConfig shortcuts;
+};
+
+struct UiConfig {
+    UiTextSelectionConfig textSelection;
+    UiKeyboardConfig keyboard;
+};
+
 struct AppConfig {
     QString configRoute;
     ClashApiConfig clashApi;
@@ -103,6 +133,7 @@ struct AppConfig {
     ThemeConfig theme;
     EditingConfig editing;
     TrayConfig tray;
+    UiConfig ui;
     QString configPath;
 };
 

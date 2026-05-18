@@ -23,6 +23,17 @@ QString requireString(const YAML::Node &node, const char *key, const QString &co
     return QString::fromStdString(value.as<std::string>());
 }
 
+QString readString(const YAML::Node &node, const char *key, const QString &defaultValue, const QString &context) {
+    const YAML::Node value = node[key];
+    if (!value) {
+        return defaultValue;
+    }
+    if (!value.IsScalar()) {
+        throw std::runtime_error(QString("%1: '%2' must be a string").arg(context, key).toStdString());
+    }
+    return QString::fromStdString(value.as<std::string>());
+}
+
 bool readBool(const YAML::Node &node, const char *key, bool defaultValue) {
     const YAML::Node value = node[key];
     return value ? value.as<bool>() : defaultValue;
@@ -469,6 +480,83 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
         }
         config.tray.keepRunningWithoutWindow = readBool(tray, "keepRunningWithoutWindow", true);
         config.tray.startHidden = readBool(tray, "startHidden", false);
+    }
+
+    if (const YAML::Node ui = root["ui"]) {
+        if (!ui.IsMap()) {
+            throw std::runtime_error("ui must be a map");
+        }
+
+        if (const YAML::Node textSelection = ui["textSelection"]) {
+            if (!textSelection.IsMap()) {
+                throw std::runtime_error("ui.textSelection must be a map");
+            }
+            config.ui.textSelection.enableInformationalLabels =
+                readBool(textSelection, "enableInformationalLabels", config.ui.textSelection.enableInformationalLabels);
+        }
+
+        if (const YAML::Node keyboard = ui["keyboard"]) {
+            if (!keyboard.IsMap()) {
+                throw std::runtime_error("ui.keyboard must be a map");
+            }
+
+            if (const YAML::Node shortcuts = keyboard["shortcuts"]) {
+                if (!shortcuts.IsMap()) {
+                    throw std::runtime_error("ui.keyboard.shortcuts must be a map");
+                }
+
+                auto &shortcutConfig = config.ui.keyboard.shortcuts;
+                shortcutConfig.closeWindowPrimary = readString(
+                    shortcuts,
+                    "closeWindowPrimary",
+                    shortcutConfig.closeWindowPrimary,
+                    "ui.keyboard.shortcuts");
+                shortcutConfig.closeWindowSecondary = readString(
+                    shortcuts,
+                    "closeWindowSecondary",
+                    shortcutConfig.closeWindowSecondary,
+                    "ui.keyboard.shortcuts");
+                shortcutConfig.nextPage =
+                    readString(shortcuts, "nextPage", shortcutConfig.nextPage, "ui.keyboard.shortcuts");
+                shortcutConfig.previousPage =
+                    readString(shortcuts, "previousPage", shortcutConfig.previousPage, "ui.keyboard.shortcuts");
+                shortcutConfig.pageMain =
+                    readString(shortcuts, "pageMain", shortcutConfig.pageMain, "ui.keyboard.shortcuts");
+                shortcutConfig.pageRules =
+                    readString(shortcuts, "pageRules", shortcutConfig.pageRules, "ui.keyboard.shortcuts");
+                shortcutConfig.pageSettings =
+                    readString(shortcuts, "pageSettings", shortcutConfig.pageSettings, "ui.keyboard.shortcuts");
+                shortcutConfig.openModeSelector = readString(
+                    shortcuts,
+                    "openModeSelector",
+                    shortcutConfig.openModeSelector,
+                    "ui.keyboard.shortcuts");
+                shortcutConfig.openRuleFileSelector = readString(
+                    shortcuts,
+                    "openRuleFileSelector",
+                    shortcutConfig.openRuleFileSelector,
+                    "ui.keyboard.shortcuts");
+                shortcutConfig.refreshRuntime = readString(
+                    shortcuts,
+                    "refreshRuntime",
+                    shortcutConfig.refreshRuntime,
+                    "ui.keyboard.shortcuts");
+                shortcutConfig.refreshLocationData = readString(
+                    shortcuts,
+                    "refreshLocationData",
+                    shortcutConfig.refreshLocationData,
+                    "ui.keyboard.shortcuts");
+                shortcutConfig.validateEditor = readString(
+                    shortcuts,
+                    "validateEditor",
+                    shortcutConfig.validateEditor,
+                    "ui.keyboard.shortcuts");
+                shortcutConfig.saveEditor =
+                    readString(shortcuts, "saveEditor", shortcutConfig.saveEditor, "ui.keyboard.shortcuts");
+                shortcutConfig.reloadEditor =
+                    readString(shortcuts, "reloadEditor", shortcutConfig.reloadEditor, "ui.keyboard.shortcuts");
+            }
+        }
     }
 
     return config;

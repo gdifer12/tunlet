@@ -62,7 +62,26 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "  createBackup: false\n"
         << "tray:\n"
         << "  keepRunningWithoutWindow: false\n"
-        << "  startHidden: true\n";
+        << "  startHidden: true\n"
+        << "ui:\n"
+        << "  textSelection:\n"
+        << "    enableInformationalLabels: false\n"
+        << "  keyboard:\n"
+        << "    shortcuts:\n"
+        << "      closeWindowPrimary: Ctrl+Q\n"
+        << "      closeWindowSecondary: \"\"\n"
+        << "      nextPage: Alt+Right\n"
+        << "      previousPage: Alt+Left\n"
+        << "      pageMain: Alt+1\n"
+        << "      pageRules: Alt+2\n"
+        << "      pageSettings: Alt+3\n"
+        << "      openModeSelector: Alt+M\n"
+        << "      openRuleFileSelector: Alt+R\n"
+        << "      refreshRuntime: F6\n"
+        << "      refreshLocationData: Ctrl+F6\n"
+        << "      validateEditor: Ctrl+Alt+V\n"
+        << "      saveEditor: Ctrl+Shift+S\n"
+        << "      reloadEditor: Ctrl+Alt+R\n";
     file.close();
 
     const auto config = tunlet::config::ConfigLoader::loadFromPath(configPath);
@@ -99,6 +118,21 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     REQUIRE(config.editing.createBackup == false);
     REQUIRE(config.tray.keepRunningWithoutWindow == false);
     REQUIRE(config.tray.startHidden == true);
+    REQUIRE(config.ui.textSelection.enableInformationalLabels == false);
+    REQUIRE(config.ui.keyboard.shortcuts.closeWindowPrimary == "Ctrl+Q");
+    REQUIRE(config.ui.keyboard.shortcuts.closeWindowSecondary.isEmpty());
+    REQUIRE(config.ui.keyboard.shortcuts.nextPage == "Alt+Right");
+    REQUIRE(config.ui.keyboard.shortcuts.previousPage == "Alt+Left");
+    REQUIRE(config.ui.keyboard.shortcuts.pageMain == "Alt+1");
+    REQUIRE(config.ui.keyboard.shortcuts.pageRules == "Alt+2");
+    REQUIRE(config.ui.keyboard.shortcuts.pageSettings == "Alt+3");
+    REQUIRE(config.ui.keyboard.shortcuts.openModeSelector == "Alt+M");
+    REQUIRE(config.ui.keyboard.shortcuts.openRuleFileSelector == "Alt+R");
+    REQUIRE(config.ui.keyboard.shortcuts.refreshRuntime == "F6");
+    REQUIRE(config.ui.keyboard.shortcuts.refreshLocationData == "Ctrl+F6");
+    REQUIRE(config.ui.keyboard.shortcuts.validateEditor == "Ctrl+Alt+V");
+    REQUIRE(config.ui.keyboard.shortcuts.saveEditor == "Ctrl+Shift+S");
+    REQUIRE(config.ui.keyboard.shortcuts.reloadEditor == "Ctrl+Alt+R");
 }
 
 TEST_CASE("ConfigLoader derives default GeoIP paths from config directory", "[config]") {
@@ -133,6 +167,21 @@ TEST_CASE("ConfigLoader derives default GeoIP paths from config directory", "[co
     REQUIRE(config.diagnostics.connection.location.dynamicCache.cachePath == dir.path() + "/geoip-cache.json");
     REQUIRE(config.tray.keepRunningWithoutWindow == true);
     REQUIRE(config.tray.startHidden == false);
+    REQUIRE(config.ui.textSelection.enableInformationalLabels == true);
+    REQUIRE(config.ui.keyboard.shortcuts.closeWindowPrimary == "Esc");
+    REQUIRE(config.ui.keyboard.shortcuts.closeWindowSecondary == "Q");
+    REQUIRE(config.ui.keyboard.shortcuts.nextPage == "Ctrl+Tab");
+    REQUIRE(config.ui.keyboard.shortcuts.previousPage == "Ctrl+Shift+Tab");
+    REQUIRE(config.ui.keyboard.shortcuts.pageMain == "1");
+    REQUIRE(config.ui.keyboard.shortcuts.pageRules == "2");
+    REQUIRE(config.ui.keyboard.shortcuts.pageSettings == "3");
+    REQUIRE(config.ui.keyboard.shortcuts.openModeSelector == "M");
+    REQUIRE(config.ui.keyboard.shortcuts.openRuleFileSelector == "R");
+    REQUIRE(config.ui.keyboard.shortcuts.refreshRuntime == "F5");
+    REQUIRE(config.ui.keyboard.shortcuts.refreshLocationData == "Shift+F5");
+    REQUIRE(config.ui.keyboard.shortcuts.validateEditor == "Ctrl+Shift+V");
+    REQUIRE(config.ui.keyboard.shortcuts.saveEditor == "Ctrl+S");
+    REQUIRE(config.ui.keyboard.shortcuts.reloadEditor == "Ctrl+R");
 }
 
 TEST_CASE("ConfigLoader supports legacy location enabled/databasePath fields", "[config]") {

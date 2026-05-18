@@ -69,6 +69,7 @@ Top-level keys:
 - `theme`
 - `editing`
 - `tray`
+- `ui`
 
 `configRoute` is the base directory used to resolve relative file paths in the config, for example `~/.config`.
 
@@ -105,6 +106,12 @@ This avoids hardcoding the complete list of supported mode values in the UI.
 
 - `keepRunningWithoutWindow`: when `true`, closing the main window hides it to tray instead of exiting
 - `startHidden`: when `true`, and a tray host is available, tunlet starts without showing the main window
+
+`ui` controls keyboard behavior and copyable UI text:
+
+- `textSelection.enableInformationalLabels`: when `true`, most informational labels in the UI can be selected and copied with the mouse
+- `keyboard.shortcuts.*`: Qt key-sequence strings for close, page navigation, selector opening, refresh, validate, save, and reload actions
+- any shortcut entry may be set to an empty string to disable that binding
 
 `Save and apply` and `Reload` on the `Settings / Info` page re-apply runtime configuration without restarting the process. `tray.startHidden` is the exception: it is stored immediately but only affects the next launch.
 

@@ -2,6 +2,7 @@
 #include "ui/editor_highlighting.hpp"
 
 #include <QAbstractButton>
+#include <QApplication>
 #include <QCoreApplication>
 #include <QColor>
 #include <QCloseEvent>
@@ -13,6 +14,7 @@
 #include <QGuiApplication>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QHostAddress>
 #include <QIcon>
 #include <QKeyEvent>
 #include <QKeySequence>
@@ -45,6 +47,10 @@
 namespace tunlet::ui {
 
 namespace {
+
+constexpr int kDashboardPageIndex = 0;
+constexpr int kRulesPageIndex = 1;
+constexpr int kSettingsPageIndex = 2;
 
 QString endpointLabelForConfig(const config::AppConfig &config) {
     return QString("%1:%2").arg(config.clashApi.host).arg(config.clashApi.port);
@@ -182,6 +188,31 @@ QString compactProbeCommands(const config::AppConfig &config) {
         .arg(commandName(config.diagnostics.connection.ipv4),
              commandName(config.diagnostics.connection.timing),
              commandName(config.diagnostics.connection.dns));
+}
+
+bool isInformationalLabelCandidate(QLabel *label) {
+    if (!label) {
+        return false;
+    }
+
+    static const QStringList excludedObjectNames = {
+        "statusPill",
+        "metaChip",
+        "selectorTriggerCaret",
+        "lineNumbers",
+        "healthInlineBadge",
+    };
+    if (excludedObjectNames.contains(label->objectName())) {
+        return false;
+    }
+
+    for (QWidget *ancestor = label->parentWidget(); ancestor; ancestor = ancestor->parentWidget()) {
+        if (qobject_cast<QAbstractButton *>(ancestor)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 QList<QTextEdit::ExtraSelection> buildEditorErrorSelections(QPlainTextEdit *editor, int line, int column) {
@@ -514,7 +545,6 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
     updateWindowSizeLabel();
     refreshRecentActionLabel();
     refreshAppConfigPathLabel();
-    positionFooterIpBadge();
 }
 
 void MainWindow::buildUi(bool trayAvailable) {
@@ -563,28 +593,11 @@ void MainWindow::buildUi(bool trayAvailable) {
     rootLayout->addWidget(windowFrame, 1);
     setCentralWidget(root);
 
-    auto *nextPageShortcut = new QShortcut(QKeySequence("Ctrl+Tab"), this);
-    connect(nextPageShortcut, &QShortcut::activated, this, [this]() {
-        if (m_navButtons.isEmpty()) {
-            return;
-        }
-        const int next = (m_pages->currentIndex() + 1) % m_navButtons.size();
-        setCurrentPage(next);
-    });
-
-    auto *prevPageShortcut = new QShortcut(QKeySequence("Ctrl+Shift+Tab"), this);
-    connect(prevPageShortcut, &QShortcut::activated, this, [this]() {
-        if (m_navButtons.isEmpty()) {
-            return;
-        }
-        const int current = m_pages->currentIndex();
-        const int prev = (current - 1 + m_navButtons.size()) % m_navButtons.size();
-        setCurrentPage(prev);
-    });
-
     statusBar()->hide();
-    setCurrentPage(0);
+    setCurrentPage(kDashboardPageIndex);
     updateWindowSizeLabel();
+    updateInformationalLabelSelection();
+    rebuildShortcuts();
     showActionMessage("Ready");
     reloadSettingsFile();
 
@@ -681,23 +694,41 @@ QWidget *MainWindow::buildHealthStrip() {
         itemLayout->setContentsMargins(10, 5, 10, 5);
         itemLayout->setSpacing(1);
         if (labels.at(index) == "IP") {
-            m_footerIpItem = item;
-            auto *meta = new QLabel(labels.at(index), item);
-            meta->setObjectName("metaLabel");
-            m_footerIpLocationBadgeLabel = new QLabel("N/A", item);
+            m_footerIpContent = new QWidget(item);
+            m_footerIpContent->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+            auto *contentLayout = new QVBoxLayout(m_footerIpContent);
+            contentLayout->setContentsMargins(0, 0, 0, 0);
+            contentLayout->setSpacing(1);
+
+            auto *head = new QWidget(m_footerIpContent);
+            auto *headLayout = new QHBoxLayout(head);
+            headLayout->setContentsMargins(0, 0, 0, 0);
+            headLayout->setSpacing(6);
+            m_footerIpMetaLabel = new QLabel(labels.at(index), head);
+            m_footerIpMetaLabel->setObjectName("metaLabel");
+            m_footerIpLocationBadgeLabel = new QLabel("N/A", head);
             m_footerIpLocationBadgeLabel->setObjectName("healthInlineBadge");
             m_footerIpLocationBadgeLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            m_footerIpLocationBadgeLabel->raise();
-            itemLayout->addWidget(meta);
+            headLayout->addWidget(m_footerIpMetaLabel, 0, Qt::AlignLeft | Qt::AlignVCenter);
+            headLayout->addStretch(1);
+            headLayout->addWidget(m_footerIpLocationBadgeLabel, 0, Qt::AlignRight | Qt::AlignVCenter);
+            contentLayout->addWidget(head);
+
+            *targets[index] = new QLabel(m_footerIpContent);
+            (*targets[index])->setObjectName("healthValue");
+            (*targets[index])->setWordWrap(false);
+            contentLayout->addWidget(*targets[index], 0, Qt::AlignLeft);
+
+            itemLayout->addWidget(m_footerIpContent, 0, Qt::AlignLeft);
         } else {
             auto *meta = new QLabel(labels.at(index), item);
             meta->setObjectName("metaLabel");
             itemLayout->addWidget(meta);
+            *targets[index] = new QLabel(item);
+            (*targets[index])->setObjectName("healthValue");
+            (*targets[index])->setWordWrap(true);
+            itemLayout->addWidget(*targets[index]);
         }
-        *targets[index] = new QLabel(item);
-        (*targets[index])->setObjectName("healthValue");
-        (*targets[index])->setWordWrap(true);
-        itemLayout->addWidget(*targets[index]);
         grid->addWidget(item, 0, index);
     }
 
@@ -872,11 +903,7 @@ QWidget *MainWindow::buildDashboardPage() {
     connect(refreshButton, &QPushButton::clicked, this, &MainWindow::reloadSettingsFile);
     auto *reloadButton = new QPushButton("Refresh runtime", selectorCard);
     reloadButton->setObjectName("ghostButton");
-    connect(reloadButton, &QPushButton::clicked, this, [this]() {
-        m_modeController->refreshStatus();
-        m_diagnosticsService->refreshNow();
-        showActionMessage("Requested runtime refresh", 3000);
-    });
+    connect(reloadButton, &QPushButton::clicked, this, &MainWindow::refreshRuntime);
     m_refreshLocationDataButton = new QPushButton("Refresh location data", selectorCard);
     m_refreshLocationDataButton->setObjectName("ghostButton");
     m_refreshLocationDataButton->setAttribute(Qt::WA_AlwaysShowToolTips, true);
@@ -1301,6 +1328,9 @@ void MainWindow::setCurrentPage(int index) {
 void MainWindow::applyConfig(const config::AppConfig &config) {
     m_config = config;
 
+    updateInformationalLabelSelection();
+    updateFooterIpContentWidth();
+    rebuildShortcuts();
     populateModeProfiles();
     populateRuleFiles();
     refreshAppConfigPathLabel();
@@ -1863,6 +1893,192 @@ void MainWindow::setSettingsBanner(const QString &text, const QString &tone) {
     }
 }
 
+void MainWindow::updateInformationalLabelSelection() {
+    const bool enableSelection = m_config.ui.textSelection.enableInformationalLabels;
+    const auto labels = findChildren<QLabel *>();
+    for (QLabel *label : labels) {
+        const bool selectable = enableSelection && isInformationalLabelCandidate(label);
+        label->setTextInteractionFlags(selectable ? Qt::TextSelectableByMouse : Qt::NoTextInteraction);
+        label->setCursor(selectable ? Qt::IBeamCursor : Qt::ArrowCursor);
+    }
+}
+
+void MainWindow::updateFooterIpContentWidth() {
+    if (!m_footerIpContent || !m_footerIpValue || !m_footerIpMetaLabel || !m_footerIpLocationBadgeLabel) {
+        return;
+    }
+
+    m_footerIpLocationBadgeLabel->adjustSize();
+    const int ipTextWidth = m_footerIpValue->sizeHint().width();
+    const QString badgeText = m_footerIpLocationBadgeLabel->text().trimmed();
+    const int headerSpacing = 6;
+    const int headerWidth = m_footerIpMetaLabel->sizeHint().width() +
+                            (badgeText.isEmpty() ? 0 : headerSpacing + m_footerIpLocationBadgeLabel->sizeHint().width());
+    m_footerIpContent->setFixedWidth(qMax(ipTextWidth, headerWidth));
+}
+
+void MainWindow::rebuildShortcuts() {
+    for (const auto &shortcut : m_shortcuts) {
+        if (shortcut) {
+            shortcut->deleteLater();
+        }
+    }
+    m_shortcuts.clear();
+
+    const auto &shortcuts = m_config.ui.keyboard.shortcuts;
+    auto registerShortcut = [this](const QString &sequence, auto handler, bool allowWhenEditorFocused = true) {
+        if (sequence.trimmed().isEmpty()) {
+            return;
+        }
+
+        auto *shortcut = new QShortcut(QKeySequence(sequence), this);
+        shortcut->setContext(Qt::WidgetWithChildrenShortcut);
+        connect(shortcut, &QShortcut::activated, this, [this, handler, allowWhenEditorFocused]() {
+            if (!allowWhenEditorFocused && isTextEditorFocused()) {
+                return;
+            }
+            handler();
+        });
+        m_shortcuts.push_back(shortcut);
+    };
+
+    registerShortcut(shortcuts.closeWindowPrimary, [this]() {
+        closeWindowFromShortcut(true);
+    });
+    registerShortcut(shortcuts.closeWindowSecondary, [this]() {
+        closeWindowFromShortcut(false);
+    }, false);
+    registerShortcut(shortcuts.nextPage, [this]() {
+        if (m_navButtons.isEmpty() || !m_pages) {
+            return;
+        }
+        const int next = (m_pages->currentIndex() + 1) % m_navButtons.size();
+        setCurrentPage(next);
+    });
+    registerShortcut(shortcuts.previousPage, [this]() {
+        if (m_navButtons.isEmpty() || !m_pages) {
+            return;
+        }
+        const int prev = (m_pages->currentIndex() - 1 + m_navButtons.size()) % m_navButtons.size();
+        setCurrentPage(prev);
+    });
+    registerShortcut(shortcuts.pageMain, [this]() {
+        setCurrentPage(kDashboardPageIndex);
+    }, false);
+    registerShortcut(shortcuts.pageRules, [this]() {
+        setCurrentPage(kRulesPageIndex);
+    }, false);
+    registerShortcut(shortcuts.pageSettings, [this]() {
+        setCurrentPage(kSettingsPageIndex);
+    }, false);
+    registerShortcut(shortcuts.openModeSelector, [this]() {
+        setCurrentPage(kDashboardPageIndex);
+        openModePopup();
+    }, false);
+    registerShortcut(shortcuts.openRuleFileSelector, [this]() {
+        setCurrentPage(kRulesPageIndex);
+        openRuleFilePopup();
+    }, false);
+    registerShortcut(shortcuts.refreshRuntime, [this]() {
+        refreshRuntime();
+    });
+    registerShortcut(shortcuts.refreshLocationData, [this]() {
+        if (!m_refreshLocationDataButton || !m_refreshLocationDataButton->isEnabled()) {
+            return;
+        }
+        m_diagnosticsService->refreshLocationDataNow();
+        showActionMessage("Requested location data refresh", 3000);
+    });
+    registerShortcut(shortcuts.validateEditor, [this]() {
+        triggerEditorValidate();
+    });
+    registerShortcut(shortcuts.saveEditor, [this]() {
+        triggerEditorSave();
+    });
+    registerShortcut(shortcuts.reloadEditor, [this]() {
+        triggerEditorReload();
+    });
+}
+
+void MainWindow::refreshRuntime() {
+    if (!m_modeController || !m_diagnosticsService) {
+        return;
+    }
+
+    m_modeController->refreshStatus();
+    m_diagnosticsService->refreshNow();
+    showActionMessage("Requested runtime refresh", 3000);
+}
+
+void MainWindow::triggerEditorSave() {
+    if (!m_pages) {
+        return;
+    }
+
+    switch (m_pages->currentIndex()) {
+    case kRulesPageIndex:
+        saveCurrentRuleFile();
+        break;
+    case kSettingsPageIndex:
+        saveSettingsFile();
+        break;
+    default:
+        break;
+    }
+}
+
+void MainWindow::triggerEditorReload() {
+    if (!m_pages) {
+        return;
+    }
+
+    switch (m_pages->currentIndex()) {
+    case kRulesPageIndex:
+        reloadCurrentRuleFile();
+        break;
+    case kSettingsPageIndex:
+        reloadSettingsFile();
+        break;
+    default:
+        break;
+    }
+}
+
+void MainWindow::triggerEditorValidate() {
+    if (!m_pages) {
+        return;
+    }
+
+    switch (m_pages->currentIndex()) {
+    case kRulesPageIndex:
+        validateCurrentEditorText();
+        break;
+    case kSettingsPageIndex:
+        validateSettingsText();
+        break;
+    default:
+        break;
+    }
+}
+
+void MainWindow::closeWindowFromShortcut(bool allowWhenEditorFocused) {
+    if (!allowWhenEditorFocused && isTextEditorFocused()) {
+        return;
+    }
+    if (m_selectorPopup) {
+        closeSelectorPopup();
+        return;
+    }
+    close();
+}
+
+bool MainWindow::isTextEditorFocused() const {
+    QWidget *focused = QApplication::focusWidget();
+    return focused && (focused == m_editor || focused == m_settingsEditor ||
+                       (m_editor && m_editor->isAncestorOf(focused)) ||
+                       (m_settingsEditor && m_settingsEditor->isAncestorOf(focused)));
+}
+
 void MainWindow::repolish(QWidget *widget) {
     if (!widget) {
         return;
@@ -1870,21 +2086,6 @@ void MainWindow::repolish(QWidget *widget) {
     widget->style()->unpolish(widget);
     widget->style()->polish(widget);
     widget->update();
-}
-
-void MainWindow::positionFooterIpBadge() {
-    if (!m_footerIpItem || !m_footerIpValue || !m_footerIpLocationBadgeLabel) {
-        return;
-    }
-
-    m_footerIpLocationBadgeLabel->adjustSize();
-    const QRect valueGeometry = m_footerIpValue->geometry();
-    const int visibleValueWidth = qMin(m_footerIpValue->sizeHint().width(), valueGeometry.width());
-    const int textRightEdge = valueGeometry.left() + visibleValueWidth;
-    const int x = textRightEdge - m_footerIpLocationBadgeLabel->width();
-    const int y = 5;
-    m_footerIpLocationBadgeLabel->move(qMax(10, x), y);
-    m_footerIpLocationBadgeLabel->raise();
 }
 
 void MainWindow::updateDashboardCards() {
@@ -2002,7 +2203,6 @@ void MainWindow::updateDashboardCards() {
         m_footerIpLocationBadgeLabel->setText(locationBadgeText);
         m_footerIpLocationBadgeLabel->setToolTip(
             locationBadgeText == "N/A" ? QString("Location information unavailable") : locationText);
-        positionFooterIpBadge();
     }
 
     if (m_connectionEndpointValue) {
@@ -2127,6 +2327,7 @@ void MainWindow::updateDashboardCards() {
         m_footerReloadValue->setText(refreshText);
     }
 
+    updateFooterIpContentWidth();
     updateModeSelectionUi();
 }
 

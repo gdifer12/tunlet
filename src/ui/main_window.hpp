@@ -22,6 +22,7 @@ class QPlainTextEdit;
 class QPushButton;
 class QResizeEvent;
 class QScrollArea;
+class QShortcut;
 class QStackedWidget;
 class QToolButton;
 class QWidget;
@@ -112,7 +113,15 @@ private:
     void setRuleBanner(const QString &title, const QString &message, const QString &tone);
     void setSettingsBanner(const QString &text, const QString &tone);
     void repolish(QWidget *widget);
-    void positionFooterIpBadge();
+    void updateInformationalLabelSelection();
+    void updateFooterIpContentWidth();
+    void rebuildShortcuts();
+    void refreshRuntime();
+    void triggerEditorSave();
+    void triggerEditorReload();
+    void triggerEditorValidate();
+    void closeWindowFromShortcut(bool allowWhenEditorFocused);
+    bool isTextEditorFocused() const;
     void setCurrentPage(int index);
     void setSelectedProfileName(const QString &profileName);
     bool hasProfile(const QString &profileName) const;
@@ -215,7 +224,8 @@ private:
     QScrollArea *m_settingsPageScrollArea = nullptr;
 
     QLabel *m_footerLatencyValue = nullptr;
-    QWidget *m_footerIpItem = nullptr;
+    QWidget *m_footerIpContent = nullptr;
+    QLabel *m_footerIpMetaLabel = nullptr;
     QLabel *m_footerIpValue = nullptr;
     QLabel *m_footerIpLocationBadgeLabel = nullptr;
     QLabel *m_footerDnsValue = nullptr;
@@ -223,6 +233,7 @@ private:
     QLabel *m_recentActionLabel = nullptr;
     QWidget *m_selectorPopup = nullptr;
     QWidget *m_selectorPopupTrigger = nullptr;
+    QVector<QPointer<QShortcut>> m_shortcuts;
 
     bool m_trayAvailable = false;
 };

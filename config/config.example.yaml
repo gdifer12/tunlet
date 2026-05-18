@@ -68,3 +68,23 @@ editing:
 tray:
   keepRunningWithoutWindow: true
   startHidden: false
+
+ui:
+  textSelection:
+    enableInformationalLabels: true
+  keyboard:
+    shortcuts:
+      closeWindowPrimary: "Esc"
+      closeWindowSecondary: "Q"
+      nextPage: "Ctrl+Tab"
+      previousPage: "Ctrl+Shift+Tab"
+      pageMain: "1"
+      pageRules: "2"
+      pageSettings: "3"
+      openModeSelector: "M"
+      openRuleFileSelector: "R"
+      refreshRuntime: "Ctrl+R"
+      refreshLocationData: "Shift+F5"
+      validateEditor: "Ctrl+Shift+V"
+      saveEditor: "Ctrl+S"
+      reloadEditor: "Ctrl+Shift+R"
