@@ -2,6 +2,7 @@
 
 #include "clash/mode_controller.hpp"
 #include "diagnostics/diagnostics_parsing.hpp"
+#include "logging/logging_service.hpp"
 
 #include <QDateTime>
 #include <QFileInfo>
@@ -111,10 +112,27 @@ QString locationModeName(config::DiagnosticsLocationMode mode) {
     }
 }
 
+QString geoIpStateName(GeoIpResolveState state) {
+    switch (state) {
+    case GeoIpResolveState::Disabled:
+        return "disabled";
+    case GeoIpResolveState::Ready:
+        return "ready";
+    case GeoIpResolveState::Pending:
+        return "pending";
+    case GeoIpResolveState::Unavailable:
+    default:
+        return "unavailable";
+    }
+}
+
 }  // namespace
 
-DiagnosticsService::DiagnosticsService(const config::AppConfig &config, clash::ClashApiClient *client, QObject *parent)
-    : QObject(parent), m_config(config), m_client(client) {
+DiagnosticsService::DiagnosticsService(const config::AppConfig &config,
+                                       clash::ClashApiClient *client,
+                                       logging::LoggingService *loggingService,
+                                       QObject *parent)
+    : QObject(parent), m_config(config), m_client(client), m_logger(loggingService) {
     connect(m_client, &clash::ClashApiClient::healthCheckFinished, this, &DiagnosticsService::handleHealthResult);
     connect(m_client, &clash::ClashApiClient::trafficFinished, this, &DiagnosticsService::handleTrafficResult);
     connect(&m_timer, &QTimer::timeout, this, qOverload<>(&DiagnosticsService::refreshNow));
@@ -126,8 +144,19 @@ void DiagnosticsService::start() {
     updateConfigurationSnapshot();
 
     if (!m_config.diagnostics.enabled) {
+        if (m_logger) {
+            m_logger->logInfo("diagnostics.runtime", "Diagnostics service is disabled by config");
+        }
         resetConnectionSnapshot("Diagnostics disabled");
         return;
+    }
+
+    if (m_logger) {
+        m_logger->logInfo("diagnostics.runtime",
+                          "Started diagnostics refresh service",
+                          {},
+                          {{"refresh_interval_ms", QString::number(m_config.diagnostics.refreshIntervalMs)},
+                           {"location_mode", locationModeName(m_config.diagnostics.connection.location.mode)}});
     }
 
     m_timer.start(m_config.diagnostics.refreshIntervalMs);
@@ -161,8 +190,19 @@ void DiagnosticsService::refreshLocationDataNow() {
         return;
     }
 
+    if (m_logger) {
+        m_logger->logInfo("diagnostics.location",
+                          "Requested location data refresh",
+                          {},
+                          {{"location_mode", locationModeName(m_config.diagnostics.connection.location.mode)},
+                           {"public_ip", m_snapshot.publicIp.trimmed()}});
+    }
+
     if (!m_geoIpProvider) {
         applyGeoIpResolveResult({.state = GeoIpResolveState::Unavailable, .detail = "Location provider unavailable."});
+        if (m_logger) {
+            m_logger->logWarning("diagnostics.location", "Location data refresh failed", "Location provider unavailable.");
+        }
         emitSnapshotUpdate();
         return;
     }
@@ -172,6 +212,11 @@ void DiagnosticsService::refreshLocationDataNow() {
     if (needsCurrentIp && !isUsableIpAddress(publicIp)) {
         applyGeoIpResolveResult({.state = GeoIpResolveState::Unavailable,
                                  .detail = "Public IP unavailable; run Refresh runtime before updating location data."});
+        if (m_logger) {
+            m_logger->logWarning("diagnostics.location",
+                                 "Location data refresh could not start",
+                                 "Public IP unavailable; run Refresh runtime before updating location data.");
+        }
         emitSnapshotUpdate();
         return;
     }
@@ -186,9 +231,46 @@ void DiagnosticsService::refreshLocationDataNow() {
                 return;
             }
             applyGeoIpResolveResult(asyncResult);
+            if (m_logger) {
+                if (asyncResult.state == GeoIpResolveState::Unavailable) {
+                    m_logger->logWarning("diagnostics.location",
+                                         "Location data refresh failed",
+                                         asyncResult.detail,
+                                         {{"public_ip", publicIp}, {"state", geoIpStateName(asyncResult.state)}});
+                } else {
+                    m_logger->logInfo("diagnostics.location",
+                                      "Location data refresh completed",
+                                      asyncResult.detail,
+                                      {{"public_ip", publicIp},
+                                       {"state", geoIpStateName(asyncResult.state)},
+                                       {"stale", asyncResult.record.stale ? "true" : "false"}});
+                }
+            }
             emitSnapshotUpdate();
         });
     applyGeoIpResolveResult(immediate);
+    if (m_logger) {
+        if (immediate.state == GeoIpResolveState::Unavailable) {
+            m_logger->logWarning("diagnostics.location",
+                                 "Location data refresh failed",
+                                 immediate.detail,
+                                 {{"public_ip", publicIp}, {"state", geoIpStateName(immediate.state)}});
+        } else if (immediate.state == GeoIpResolveState::Pending) {
+            m_logger->logInfo("diagnostics.location",
+                              "Location data refresh started",
+                              immediate.detail,
+                              {{"public_ip", publicIp},
+                               {"state", geoIpStateName(immediate.state)},
+                               {"stale", immediate.record.stale ? "true" : "false"}});
+        } else {
+            m_logger->logInfo("diagnostics.location",
+                              "Location data refresh completed",
+                              immediate.detail,
+                              {{"public_ip", publicIp},
+                               {"state", geoIpStateName(immediate.state)},
+                               {"stale", immediate.record.stale ? "true" : "false"}});
+        }
+    }
     emitSnapshotUpdate();
 }
 
@@ -672,12 +754,52 @@ void DiagnosticsService::readLocationFromPublicIp(RefreshOrigin origin) {
             return;
         }
         applyGeoIpResolveResult(asyncResult);
+        if (m_logger &&
+            (asyncResult.state == GeoIpResolveState::Unavailable ||
+             asyncResult.state == GeoIpResolveState::Pending ||
+             (asyncResult.state == GeoIpResolveState::Ready && !asyncResult.record.updatedAt.isNull()))) {
+            if (asyncResult.state == GeoIpResolveState::Unavailable) {
+                m_logger->logWarning("diagnostics.location",
+                                     "GeoIP bootstrap on cache miss failed",
+                                     asyncResult.detail,
+                                     {{"public_ip", publicIp}, {"state", geoIpStateName(asyncResult.state)}});
+            } else {
+                m_logger->logInfo("diagnostics.location",
+                                  "GeoIP bootstrap on cache miss completed",
+                                  asyncResult.detail,
+                                  {{"public_ip", publicIp},
+                                   {"state", geoIpStateName(asyncResult.state)},
+                                   {"stale", asyncResult.record.stale ? "true" : "false"}});
+            }
+        }
         emitSnapshotUpdate();
     };
     const GeoIpResolveResult immediate =
         shouldBootstrapDynamicCacheMiss ? m_geoIpProvider->bootstrapLocationOnMiss(publicIp, callback)
                                         : m_geoIpProvider->readLocation(publicIp, callback);
     applyGeoIpResolveResult(immediate);
+    if (m_logger && shouldBootstrapDynamicCacheMiss) {
+        if (immediate.state == GeoIpResolveState::Unavailable) {
+            m_logger->logWarning("diagnostics.location",
+                                 "GeoIP bootstrap on cache miss failed",
+                                 immediate.detail,
+                                 {{"public_ip", publicIp}, {"state", geoIpStateName(immediate.state)}});
+        } else if (immediate.state == GeoIpResolveState::Pending) {
+            m_logger->logInfo("diagnostics.location",
+                              "GeoIP bootstrap on cache miss started",
+                              immediate.detail,
+                              {{"public_ip", publicIp},
+                               {"state", geoIpStateName(immediate.state)},
+                               {"stale", immediate.record.stale ? "true" : "false"}});
+        } else {
+            m_logger->logInfo("diagnostics.location",
+                              "GeoIP bootstrap on cache miss completed",
+                              immediate.detail,
+                              {{"public_ip", publicIp},
+                               {"state", geoIpStateName(immediate.state)},
+                               {"stale", immediate.record.stale ? "true" : "false"}});
+        }
+    }
 }
 
 void DiagnosticsService::emitSnapshotUpdate() {

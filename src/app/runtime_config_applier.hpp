@@ -19,6 +19,10 @@ namespace tunlet::diagnostics {
 class DiagnosticsService;
 }
 
+namespace tunlet::logging {
+class LoggingService;
+}
+
 namespace tunlet::rules {
 class RuleSetService;
 }
@@ -41,6 +45,7 @@ public:
                          config::ConfigFileService *configFileService,
                          rules::RuleSetService *ruleSetService,
                          diagnostics::DiagnosticsService *diagnosticsService,
+                         logging::LoggingService *loggingService,
                          ui::TrayController *trayController);
 
     RuntimeConfigApplyResult apply(const config::AppConfig &config) const;
@@ -52,6 +57,7 @@ private:
     config::ConfigFileService *m_configFileService = nullptr;
     rules::RuleSetService *m_ruleSetService = nullptr;
     diagnostics::DiagnosticsService *m_diagnosticsService = nullptr;
+    logging::LoggingService *m_loggingService = nullptr;
     ui::TrayController *m_trayController = nullptr;
 };
 

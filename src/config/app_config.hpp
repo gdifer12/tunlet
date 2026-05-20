@@ -96,6 +96,19 @@ struct TrayConfig {
     bool startHidden = false;
 };
 
+enum class LoggingLevel {
+    Info,
+    Warning,
+    Error,
+};
+
+struct LoggingConfig {
+    bool enabled = false;
+    LoggingLevel level = LoggingLevel::Info;
+    QString textPath;
+    QString jsonlPath;
+};
+
 struct UiTextSelectionConfig {
     bool enableInformationalLabels = true;
 };
@@ -134,6 +147,7 @@ struct AppConfig {
     ThemeConfig theme;
     EditingConfig editing;
     TrayConfig tray;
+    LoggingConfig logging;
     UiConfig ui;
     QString configPath;
 };

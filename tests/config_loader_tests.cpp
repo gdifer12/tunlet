@@ -64,6 +64,11 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "tray:\n"
         << "  keepRunningWithoutWindow: false\n"
         << "  startHidden: true\n"
+        << "logging:\n"
+        << "  enabled: true\n"
+        << "  level: warning\n"
+        << "  textPath: logs/tunlet.log\n"
+        << "  jsonlPath: logs/tunlet.jsonl\n"
         << "ui:\n"
         << "  textSelection:\n"
         << "    enableInformationalLabels: false\n"
@@ -120,6 +125,10 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     REQUIRE(config.editing.createBackup == false);
     REQUIRE(config.tray.keepRunningWithoutWindow == false);
     REQUIRE(config.tray.startHidden == true);
+    REQUIRE(config.logging.enabled == true);
+    REQUIRE(config.logging.level == tunlet::config::LoggingLevel::Warning);
+    REQUIRE(config.logging.textPath == "/tmp/tunlet-root/logs/tunlet.log");
+    REQUIRE(config.logging.jsonlPath == "/tmp/tunlet-root/logs/tunlet.jsonl");
     REQUIRE(config.ui.textSelection.enableInformationalLabels == false);
     REQUIRE(config.ui.keyboard.shortcuts.closeWindowPrimary == "Ctrl+Q");
     REQUIRE(config.ui.keyboard.shortcuts.closeWindowSecondary.isEmpty());
@@ -170,6 +179,10 @@ TEST_CASE("ConfigLoader derives default GeoIP paths from config directory", "[co
     REQUIRE(config.diagnostics.connection.location.dynamicCache.cachePath == dir.path() + "/geoip-cache.json");
     REQUIRE(config.tray.keepRunningWithoutWindow == true);
     REQUIRE(config.tray.startHidden == false);
+    REQUIRE(config.logging.enabled == false);
+    REQUIRE(config.logging.level == tunlet::config::LoggingLevel::Info);
+    REQUIRE(config.logging.textPath.isEmpty());
+    REQUIRE(config.logging.jsonlPath.isEmpty());
     REQUIRE(config.ui.textSelection.enableInformationalLabels == true);
     REQUIRE(config.ui.keyboard.shortcuts.closeWindowPrimary == "Esc");
     REQUIRE(config.ui.keyboard.shortcuts.closeWindowSecondary == "Q");
@@ -267,6 +280,58 @@ TEST_CASE("ConfigLoader rejects legacy externalIp diagnostics schema", "[config]
     file.close();
 
     REQUIRE_THROWS(tunlet::config::ConfigLoader::loadFromPath(configPath));
+}
+
+TEST_CASE("ConfigLoader rejects unsupported logging level", "[config]") {
+    const QString config = QString()
+        + "clashApi:\n"
+        + "  host: 127.0.0.1\n"
+        + "  port: 9090\n"
+        + "ruleSets:\n"
+        + "  forceProxyPath: /tmp/force-proxy.json\n"
+        + "  forceDirectPath: /tmp/force-direct.json\n"
+        + "  autoProxyPath: /tmp/auto-proxy.json\n"
+        + "  autoDirectPath: /tmp/auto-direct.json\n"
+        + "logging:\n"
+        + "  enabled: true\n"
+        + "  level: verbose\n"
+        + "  textPath: /tmp/tunlet.log\n";
+
+    REQUIRE_THROWS(tunlet::config::ConfigLoader::loadFromData(config, "/tmp/tunlet/config.yaml"));
+}
+
+TEST_CASE("ConfigLoader requires a sink path when logging is enabled", "[config]") {
+    const QString config = QString()
+        + "clashApi:\n"
+        + "  host: 127.0.0.1\n"
+        + "  port: 9090\n"
+        + "ruleSets:\n"
+        + "  forceProxyPath: /tmp/force-proxy.json\n"
+        + "  forceDirectPath: /tmp/force-direct.json\n"
+        + "  autoProxyPath: /tmp/auto-proxy.json\n"
+        + "  autoDirectPath: /tmp/auto-direct.json\n"
+        + "logging:\n"
+        + "  enabled: true\n";
+
+    REQUIRE_THROWS(tunlet::config::ConfigLoader::loadFromData(config, "/tmp/tunlet/config.yaml"));
+}
+
+TEST_CASE("ConfigLoader rejects identical logging sink paths", "[config]") {
+    const QString config = QString()
+        + "clashApi:\n"
+        + "  host: 127.0.0.1\n"
+        + "  port: 9090\n"
+        + "ruleSets:\n"
+        + "  forceProxyPath: /tmp/force-proxy.json\n"
+        + "  forceDirectPath: /tmp/force-direct.json\n"
+        + "  autoProxyPath: /tmp/auto-proxy.json\n"
+        + "  autoDirectPath: /tmp/auto-direct.json\n"
+        + "logging:\n"
+        + "  enabled: true\n"
+        + "  textPath: /tmp/tunlet.log\n"
+        + "  jsonlPath: /tmp/tunlet.log\n";
+
+    REQUIRE_THROWS(tunlet::config::ConfigLoader::loadFromData(config, "/tmp/tunlet/config.yaml"));
 }
 
 TEST_CASE("ConfigLoader rejects missing ruleSets", "[config]") {

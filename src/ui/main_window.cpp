@@ -184,6 +184,26 @@ QString formatLocationSourceText(const diagnostics::DiagnosticsSnapshot &snapsho
     return text;
 }
 
+QString formatLoggingStatusText(const logging::LoggingStatus &status) {
+    if (!status.enabled) {
+        return "Disabled";
+    }
+    if (status.textSinkActive || status.jsonlSinkActive) {
+        return status.lastError.trimmed().isEmpty() ? QString("Active") : QString("Degraded");
+    }
+    return "Unavailable";
+}
+
+QString formatLoggingSinkText(const QString &path, bool active, bool enabled) {
+    if (path.trimmed().isEmpty()) {
+        return "Off";
+    }
+    if (!enabled) {
+        return QString("Configured (%1)").arg(compactPath(path));
+    }
+    return active ? compactPath(path) : QString("Unavailable (%1)").arg(compactPath(path));
+}
+
 QString compactProbeCommands(const config::AppConfig &config) {
     return QString("IP %1 · Delay %2 · DNS %3")
         .arg(commandName(config.diagnostics.connection.ipv4),
@@ -415,6 +435,7 @@ MainWindow::MainWindow(const config::AppConfig &config,
                        diagnostics::DiagnosticsService *diagnosticsService,
                        rules::RuleSetService *ruleSetService,
                        app::RuntimeConfigApplier *runtimeConfigApplier,
+                       logging::LoggingService *loggingService,
                        bool trayAvailable,
                        QWidget *parent)
     : QMainWindow(parent),
@@ -422,6 +443,7 @@ MainWindow::MainWindow(const config::AppConfig &config,
       m_modeController(modeController),
       m_configFileService(configFileService),
       m_diagnosticsService(diagnosticsService),
+      m_loggingService(loggingService),
       m_ruleSetService(ruleSetService),
       m_runtimeConfigApplier(runtimeConfigApplier),
       m_trayAvailable(trayAvailable) {
@@ -440,6 +462,12 @@ MainWindow::MainWindow(const config::AppConfig &config,
         updateDashboardCards();
     });
     connect(m_diagnosticsService, &diagnostics::DiagnosticsService::diagnosticsUpdated, this, &MainWindow::onDiagnosticsUpdated);
+    if (m_loggingService) {
+        connect(m_loggingService, &logging::LoggingService::statusChanged, this, [this](const logging::LoggingStatus &status) {
+            onLoggingStatusChanged(status, true);
+        });
+        onLoggingStatusChanged(m_loggingService->status(), true);
+    }
 
     onStatusUpdated(m_modeController->status());
     onDiagnosticsUpdated(m_diagnosticsService->snapshot());
@@ -458,6 +486,9 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     if (m_trayAvailable && m_config.tray.keepRunningWithoutWindow) {
         closeSelectorPopup();
         hide();
+        if (m_loggingService) {
+            m_loggingService->logInfo("tray", "Main window hidden to tray");
+        }
         showActionMessage("Main window hidden to tray", 3000);
         event->ignore();
         return;
@@ -749,6 +780,9 @@ QWidget *MainWindow::buildHealthStrip() {
     connect(recheckButton, &QToolButton::clicked, this, [this]() {
         m_modeController->refreshStatus();
         m_diagnosticsService->refreshNow();
+        if (m_loggingService) {
+            m_loggingService->logInfo("ui.runtime", "Requested diagnostics recheck");
+        }
         showActionMessage("Requested diagnostics recheck", 3000);
     });
     layout->addWidget(recheckButton, 0, Qt::AlignVCenter);
@@ -932,6 +966,9 @@ QWidget *MainWindow::buildDashboardPage() {
     m_refreshLocationDataButton->setAttribute(Qt::WA_AlwaysShowToolTips, true);
     connect(m_refreshLocationDataButton, &QPushButton::clicked, this, [this]() {
         m_diagnosticsService->refreshLocationDataNow();
+        if (m_loggingService) {
+            m_loggingService->logInfo("ui.runtime", "Requested location data refresh");
+        }
         showActionMessage("Requested location data refresh", 3000);
     });
     actionRow->addWidget(refreshButton);
@@ -1246,6 +1283,26 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     m_stateModeListValue = buildKeyValueRow(stateGrid, 11, "Supported modes", stateCard);
     stateLayout->addLayout(stateGrid);
     pageLayout->addWidget(stateCard);
+
+    auto *loggingCard = new QWidget(page);
+    loggingCard->setObjectName("card");
+    auto *loggingLayout = new QVBoxLayout(loggingCard);
+    loggingLayout->setContentsMargins(18, 18, 18, 18);
+    loggingLayout->setSpacing(14);
+    auto *loggingTitle = new QLabel("Logging", loggingCard);
+    loggingTitle->setObjectName("cardTitleStrong");
+    loggingLayout->addWidget(loggingTitle);
+    auto *loggingGrid = new QGridLayout();
+    loggingGrid->setHorizontalSpacing(14);
+    loggingGrid->setVerticalSpacing(10);
+    loggingGrid->setColumnStretch(1, 1);
+    m_loggingStatusValue = buildKeyValueRow(loggingGrid, 0, "Logger state", loggingCard);
+    m_loggingLevelValue = buildKeyValueRow(loggingGrid, 1, "Minimum level", loggingCard);
+    m_loggingTextPathValue = buildKeyValueRow(loggingGrid, 2, "Text log", loggingCard);
+    m_loggingJsonlPathValue = buildKeyValueRow(loggingGrid, 3, "JSONL log", loggingCard);
+    m_loggingLastErrorValue = buildKeyValueRow(loggingGrid, 4, "Last logger error", loggingCard);
+    loggingLayout->addLayout(loggingGrid);
+    pageLayout->addWidget(loggingCard);
 
     auto *editorCard = new QWidget(page);
     editorCard->setObjectName("card");
@@ -2016,6 +2073,9 @@ void MainWindow::rebuildShortcuts() {
             return;
         }
         m_diagnosticsService->refreshLocationDataNow();
+        if (m_loggingService) {
+            m_loggingService->logInfo("ui.runtime", "Requested location data refresh");
+        }
         showActionMessage("Requested location data refresh", 3000);
     });
     registerShortcut(shortcuts.validateEditor, [this]() {
@@ -2036,7 +2096,19 @@ void MainWindow::refreshRuntime() {
 
     m_modeController->refreshStatus();
     m_diagnosticsService->refreshNow();
+    if (m_loggingService) {
+        m_loggingService->logInfo("ui.runtime", "Requested runtime refresh");
+    }
     showActionMessage("Requested runtime refresh", 3000);
+}
+
+void MainWindow::onLoggingStatusChanged(const logging::LoggingStatus &status, bool announceError) {
+    const QString previousError = m_lastLoggingStatus.lastError;
+    m_lastLoggingStatus = status;
+    updateDashboardCards();
+    if (announceError && !status.lastError.trimmed().isEmpty() && status.lastError != previousError) {
+        showActionMessage(status.lastError, 5000);
+    }
 }
 
 void MainWindow::triggerEditorSave() {
@@ -2309,6 +2381,24 @@ void MainWindow::updateDashboardCards() {
     if (m_infoThemeValue) {
         m_infoThemeValue->setText(m_config.theme.qssPath.isEmpty() ? "Built-in QSS theme" : compactPath(m_config.theme.qssPath));
     }
+    if (m_loggingStatusValue) {
+        m_loggingStatusValue->setText(formatLoggingStatusText(m_lastLoggingStatus));
+    }
+    if (m_loggingLevelValue) {
+        m_loggingLevelValue->setText(displayModeName(logging::loggingLevelToString(m_lastLoggingStatus.level)));
+    }
+    if (m_loggingTextPathValue) {
+        m_loggingTextPathValue->setText(
+            formatLoggingSinkText(m_lastLoggingStatus.textPath, m_lastLoggingStatus.textSinkActive, m_lastLoggingStatus.enabled));
+    }
+    if (m_loggingJsonlPathValue) {
+        m_loggingJsonlPathValue->setText(
+            formatLoggingSinkText(m_lastLoggingStatus.jsonlPath, m_lastLoggingStatus.jsonlSinkActive, m_lastLoggingStatus.enabled));
+    }
+    if (m_loggingLastErrorValue) {
+        m_loggingLastErrorValue->setText(m_lastLoggingStatus.lastError.trimmed().isEmpty() ? QString("None")
+                                                                                           : m_lastLoggingStatus.lastError);
+    }
 
     if (m_stateApiStatusValue) {
         m_stateApiStatusValue->setText(apiSummary);
@@ -2410,6 +2500,12 @@ void MainWindow::onRuleFileSelectionChanged() {
         updateRuleLineNumbers();
         applyEditorErrorHighlight(m_editor, -1, -1);
         setRuleBanner("Load failed", result.error, "danger");
+        if (m_loggingService) {
+            m_loggingService->logWarning("rules.editor",
+                                         "Failed to load rule-set file",
+                                         result.error,
+                                         {{"path", file->path}});
+        }
         showActionMessage(result.error, 5000);
         return;
     }
@@ -2463,10 +2559,17 @@ void MainWindow::validateCurrentEditorText() {
         return;
     }
 
+    const auto *file = selectedRuleFile();
     const auto result = m_ruleSetService->validateJson(m_editor->toPlainText());
     if (!result.ok) {
         updateSelectedRuleFileStatus();
         setRuleBanner("Invalid JSON", result.error, "danger");
+        if (m_loggingService) {
+            m_loggingService->logWarning("rules.editor",
+                                         "Rule-set validation failed",
+                                         result.error,
+                                         file ? logging::LogContext{{"path", file->path}} : logging::LogContext{});
+        }
         showActionMessage(result.error, 5000);
         return;
     }
@@ -2494,6 +2597,12 @@ void MainWindow::saveCurrentRuleFile() {
     if (!validation.ok) {
         updateSelectedRuleFileStatus();
         setRuleBanner("Invalid JSON", validation.error, "danger");
+        if (m_loggingService) {
+            m_loggingService->logWarning("rules.editor",
+                                         "Rule-set save rejected by validation",
+                                         validation.error,
+                                         {{"path", file->path}});
+        }
         showActionMessage(validation.error, 5000);
         QMessageBox::warning(this, "Save failed", validation.error);
         return;
@@ -2502,6 +2611,12 @@ void MainWindow::saveCurrentRuleFile() {
     const auto result = m_ruleSetService->saveFile(file->path, validation.formattedText);
     if (!result.ok) {
         setRuleBanner("Save failed", result.error, "danger");
+        if (m_loggingService) {
+            m_loggingService->logError("rules.editor",
+                                       "Failed to save rule-set file",
+                                       result.error,
+                                       {{"path", file->path}});
+        }
         showActionMessage(result.error, 5000);
         QMessageBox::warning(this, "Save failed", result.error);
         return;
@@ -2515,6 +2630,9 @@ void MainWindow::saveCurrentRuleFile() {
     updateRuleLineNumbers();
     applyEditorErrorHighlight(m_editor, -1, -1);
     setRuleBanner("Saved", QString("Wrote %1").arg(compactPath(file->path)), "ok");
+    if (m_loggingService) {
+        m_loggingService->logInfo("rules.editor", "Saved rule-set file", {}, {{"path", file->path}});
+    }
     showActionMessage("Rule-set saved", 3000);
     updateSelectedRuleFileStatus();
     updateRuleFileTrigger();
@@ -2555,6 +2673,12 @@ void MainWindow::validateSettingsText() {
     const auto result = m_configFileService->validateConfigText(m_config.configPath, m_settingsEditor->toPlainText());
     if (!result.ok) {
         setSettingsBanner(result.error, "danger");
+        if (m_loggingService) {
+            m_loggingService->logWarning("config.editor",
+                                         "Config validation failed",
+                                         result.error,
+                                         {{"path", m_config.configPath}});
+        }
         showActionMessage(result.error, 5000);
         return;
     }
@@ -2573,6 +2697,12 @@ void MainWindow::saveSettingsFile() {
     const auto validation = m_configFileService->validateConfigText(m_config.configPath, text);
     if (!validation.ok) {
         setSettingsBanner(validation.error, "danger");
+        if (m_loggingService) {
+            m_loggingService->logWarning("config.editor",
+                                         "Config save rejected by validation",
+                                         validation.error,
+                                         {{"path", m_config.configPath}});
+        }
         showActionMessage(validation.error, 5000);
         QMessageBox::warning(this, "Config save failed", validation.error);
         return;
@@ -2581,6 +2711,12 @@ void MainWindow::saveSettingsFile() {
     const auto result = m_configFileService->saveFile(m_config.configPath, text);
     if (!result.ok) {
         setSettingsBanner(result.error, "danger");
+        if (m_loggingService) {
+            m_loggingService->logError("config.editor",
+                                       "Failed to write config file",
+                                       result.error,
+                                       {{"path", m_config.configPath}});
+        }
         showActionMessage(result.error, 5000);
         QMessageBox::warning(this, "Config save failed", result.error);
         return;
@@ -2592,6 +2728,12 @@ void MainWindow::saveSettingsFile() {
     } catch (const std::exception &ex) {
         const QString error = QString("Config saved but failed to apply: %1").arg(ex.what());
         setSettingsBanner(error, "warn");
+        if (m_loggingService) {
+            m_loggingService->logError("config.editor",
+                                       "Saved config file but failed to parse applied config",
+                                       ex.what(),
+                                       {{"path", m_config.configPath}});
+        }
         showActionMessage(error, 5000);
         return;
     }
@@ -2605,9 +2747,21 @@ void MainWindow::saveSettingsFile() {
     if (!applyResult.warning.trimmed().isEmpty()) {
         const QString warning = QString("Config saved and applied with warning: %1").arg(applyResult.warning);
         setSettingsBanner(warning, "warn");
+        if (m_loggingService) {
+            m_loggingService->logWarning("config.editor",
+                                         "Saved config file and applied runtime changes with warning",
+                                         applyResult.warning,
+                                         {{"path", m_config.configPath}});
+        }
         showActionMessage(warning, 5000);
     } else {
         setSettingsBanner("Config saved and applied.", "ok");
+        if (m_loggingService) {
+            m_loggingService->logInfo("config.editor",
+                                      "Saved config file and applied runtime changes",
+                                      {},
+                                      {{"path", m_config.configPath}});
+        }
         showActionMessage("Config saved", 3000);
     }
     applyEditorErrorHighlight(m_settingsEditor, -1, -1);
@@ -2625,6 +2779,12 @@ void MainWindow::reloadSettingsFile() {
         m_loadedSettingsText.clear();
         applyEditorErrorHighlight(m_settingsEditor, -1, -1);
         setSettingsBanner(result.error, "danger");
+        if (m_loggingService) {
+            m_loggingService->logError("config.editor",
+                                       "Failed to reload config file from disk",
+                                       result.error,
+                                       {{"path", m_config.configPath}});
+        }
         showActionMessage(result.error, 5000);
         return;
     }
@@ -2646,14 +2806,32 @@ void MainWindow::reloadSettingsFile() {
         if (!applyResult.warning.trimmed().isEmpty()) {
             const QString warning = QString("Loaded config with warning: %1").arg(applyResult.warning);
             setSettingsBanner(warning, "warn");
+            if (m_loggingService) {
+                m_loggingService->logWarning("config.editor",
+                                             "Reloaded config file with runtime warning",
+                                             applyResult.warning,
+                                             {{"path", m_config.configPath}});
+            }
             showActionMessage(warning, 5000);
         } else {
             setSettingsBanner("Loaded and applied current config.yaml.", "ok");
+            if (m_loggingService) {
+                m_loggingService->logInfo("config.editor",
+                                          "Reloaded config file and applied runtime changes",
+                                          {},
+                                          {{"path", m_config.configPath}});
+            }
             showActionMessage("Config reloaded", 3000);
         }
     } catch (const std::exception &ex) {
         const QString error = QString("Loaded config text but failed to apply: %1").arg(ex.what());
         setSettingsBanner(error, "warn");
+        if (m_loggingService) {
+            m_loggingService->logError("config.editor",
+                                       "Loaded config text but failed to apply runtime changes",
+                                       ex.what(),
+                                       {{"path", m_config.configPath}});
+        }
         showActionMessage(error, 5000);
     }
 }

@@ -8,6 +8,10 @@
 #include <QTimer>
 #include <QVector>
 
+namespace tunlet::logging {
+class LoggingService;
+}
+
 namespace tunlet::clash {
 
 struct ModeStatus {
@@ -25,7 +29,10 @@ class ModeController : public QObject {
     Q_OBJECT
 
 public:
-    ModeController(const config::AppConfig &config, ClashApiClient *client, QObject *parent = nullptr);
+    ModeController(const config::AppConfig &config,
+                   ClashApiClient *client,
+                   logging::LoggingService *loggingService = nullptr,
+                   QObject *parent = nullptr);
 
     void refreshStatus();
     void switchMode(const QString &profileName);
@@ -50,6 +57,7 @@ private:
 
     config::AppConfig m_config;
     ClashApiClient *m_client = nullptr;
+    logging::LoggingService *m_logger = nullptr;
     ModeStatus m_status;
     QString m_pendingProfileName;
     QString m_pendingModeValue;

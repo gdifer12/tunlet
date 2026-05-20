@@ -1,5 +1,7 @@
 #include "clash/mode_controller.hpp"
 
+#include "logging/logging_service.hpp"
+
 namespace tunlet::clash {
 
 namespace {
@@ -10,8 +12,11 @@ QString buildEndpointLabel(const config::ClashApiConfig &apiConfig) {
 
 }  // namespace
 
-ModeController::ModeController(const config::AppConfig &config, ClashApiClient *client, QObject *parent)
-    : QObject(parent), m_config(config), m_client(client) {
+ModeController::ModeController(const config::AppConfig &config,
+                               ClashApiClient *client,
+                               logging::LoggingService *loggingService,
+                               QObject *parent)
+    : QObject(parent), m_config(config), m_client(client), m_logger(loggingService) {
     connect(m_client, &ClashApiClient::healthCheckFinished, this, &ModeController::handleHealthResult);
     connect(m_client, &ClashApiClient::modeStateFinished, this, &ModeController::handleModeState);
     connect(m_client, &ClashApiClient::modeSwitchFinished, this, &ModeController::handleModeSwitch);
@@ -34,8 +39,21 @@ void ModeController::refreshStatus() {
 void ModeController::switchMode(const QString &profileName) {
     const auto *profile = findProfile(profileName);
     if (!profile) {
+        if (m_logger) {
+            m_logger->logWarning("mode.switch",
+                                 "Rejected mode switch for unknown profile",
+                                 QString("unknown mode profile: %1").arg(profileName),
+                                 {{"requested_profile", profileName}});
+        }
         emit operationFailed(QString("unknown mode profile: %1").arg(profileName));
         return;
+    }
+
+    if (m_logger) {
+        m_logger->logInfo("mode.switch",
+                          "Requested mode switch",
+                          QString("Switching to %1").arg(profile->name),
+                          {{"requested_profile", profile->name}, {"backend_mode", profile->mode}});
     }
 
     m_status.busy = true;
@@ -97,12 +115,26 @@ void ModeController::handleHealthResult(const HealthCheckResult &result) {
 }
 
 void ModeController::handleModeState(const ModeStateResult &result) {
+    const QString previousMode = m_status.currentModeValue;
+    const QString previousProfile = m_status.currentProfileName;
+    const QString previousDetail = m_status.detail;
+    const bool wasReachable = m_status.reachable;
+    const QString pendingModeValue = m_pendingModeValue;
+    const QString pendingProfileName = m_pendingProfileName;
+
     m_status.busy = false;
     m_status.lastUpdated = QDateTime::currentDateTime();
     if (!result.ok) {
         m_status.detail = result.detail;
         m_status.currentProfileName.clear();
         m_status.currentModeValue.clear();
+        if (m_logger &&
+            (wasReachable || !previousMode.isEmpty() || previousDetail != result.detail)) {
+            m_logger->logWarning("mode.sync",
+                                 "Failed to refresh Clash mode state",
+                                 result.detail,
+                                 {{"endpoint", m_status.endpointLabel}});
+        }
         emit statusUpdated(m_status);
         return;
     }
@@ -115,10 +147,24 @@ void ModeController::handleModeState(const ModeStateResult &result) {
     if (!m_pendingModeValue.isEmpty()) {
         if (QString::compare(result.currentMode, m_pendingModeValue, Qt::CaseInsensitive) == 0) {
             m_status.detail = QString("Current mode: %1").arg(result.currentMode);
+            if (m_logger) {
+                m_logger->logInfo("mode.switch",
+                                  "Backend mode switch confirmed",
+                                  m_status.detail,
+                                  {{"profile", pendingProfileName}, {"backend_mode", result.currentMode}});
+            }
         } else {
             m_status.detail =
                 QString("Switch request did not apply: API still reports '%1' instead of '%2'")
                     .arg(result.currentMode, m_pendingModeValue);
+            if (m_logger) {
+                m_logger->logError("mode.switch",
+                                   "Mode switch verification failed",
+                                   m_status.detail,
+                                   {{"requested_profile", pendingProfileName},
+                                    {"expected_backend_mode", pendingModeValue},
+                                    {"reported_backend_mode", result.currentMode}});
+            }
             emit statusUpdated(m_status);
             emit operationFailed(m_status.detail);
             m_pendingProfileName.clear();
@@ -127,6 +173,17 @@ void ModeController::handleModeState(const ModeStateResult &result) {
         }
     } else {
         m_status.detail = QString("Current mode: %1").arg(result.currentMode);
+        const bool modeChanged = QString::compare(previousMode, result.currentMode, Qt::CaseInsensitive) != 0;
+        const bool profileChanged = previousProfile != m_status.currentProfileName;
+        if (m_logger && (modeChanged || profileChanged || !wasReachable)) {
+            m_logger->logInfo("mode.sync",
+                              modeChanged || profileChanged ? "Observed backend mode change"
+                                                            : "Recovered Clash mode synchronization",
+                              m_status.detail,
+                              {{"profile", m_status.currentProfileName},
+                               {"backend_mode", result.currentMode},
+                               {"endpoint", m_status.endpointLabel}});
+        }
     }
 
     m_pendingProfileName.clear();
@@ -141,12 +198,24 @@ void ModeController::handleModeSwitch(const ModeSwitchResult &result) {
         m_status.detail = result.detail;
         m_pendingProfileName.clear();
         m_pendingModeValue.clear();
+        if (m_logger) {
+            m_logger->logError("mode.switch",
+                               "Mode switch request failed",
+                               result.detail,
+                               {{"endpoint", m_status.endpointLabel}});
+        }
         emit statusUpdated(m_status);
         emit operationFailed(result.detail);
         return;
     }
 
     m_status.detail = result.detail;
+    if (m_logger) {
+        m_logger->logInfo("mode.switch",
+                          "Mode switch request accepted by Clash API",
+                          result.detail,
+                          {{"endpoint", m_status.endpointLabel}});
+    }
     emit statusUpdated(m_status);
     refreshStatus();
 }

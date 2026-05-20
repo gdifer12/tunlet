@@ -6,6 +6,7 @@
 #include "config/config_file_service.hpp"
 #include "config/config_loader.hpp"
 #include "diagnostics/diagnostics_service.hpp"
+#include "logging/logging_service.hpp"
 #include "rules/ruleset_service.hpp"
 
 #include <QMainWindow>
@@ -39,6 +40,7 @@ public:
                diagnostics::DiagnosticsService *diagnosticsService,
                rules::RuleSetService *ruleSetService,
                app::RuntimeConfigApplier *runtimeConfigApplier,
+               logging::LoggingService *loggingService,
                bool trayAvailable,
                QWidget *parent = nullptr);
 
@@ -118,6 +120,7 @@ private:
     void updateFooterIpContentWidth();
     void rebuildShortcuts();
     void refreshRuntime();
+    void onLoggingStatusChanged(const logging::LoggingStatus &status, bool announceError);
     void triggerEditorSave();
     void triggerEditorReload();
     void triggerEditorValidate();
@@ -133,12 +136,14 @@ private:
     clash::ModeController *m_modeController = nullptr;
     config::ConfigFileService *m_configFileService = nullptr;
     diagnostics::DiagnosticsService *m_diagnosticsService = nullptr;
+    logging::LoggingService *m_loggingService = nullptr;
     rules::RuleSetService *m_ruleSetService = nullptr;
     app::RuntimeConfigApplier *m_runtimeConfigApplier = nullptr;
     QVector<NamedRuleFile> m_ruleFiles;
     QHash<QString, RuleFileUiStatus> m_ruleFileStatuses;
     clash::ModeStatus m_lastStatus;
     diagnostics::DiagnosticsSnapshot m_lastDiagnostics;
+    logging::LoggingStatus m_lastLoggingStatus;
     QString m_selectedProfileName;
     QString m_selectedRuleFilePath;
     QString m_loadedRuleText;
@@ -210,6 +215,11 @@ private:
     QLabel *m_infoGeoDbValue = nullptr;
     QLabel *m_infoProfilesValue = nullptr;
     QLabel *m_infoThemeValue = nullptr;
+    QLabel *m_loggingStatusValue = nullptr;
+    QLabel *m_loggingLevelValue = nullptr;
+    QLabel *m_loggingTextPathValue = nullptr;
+    QLabel *m_loggingJsonlPathValue = nullptr;
+    QLabel *m_loggingLastErrorValue = nullptr;
     QLabel *m_stateApiStatusValue = nullptr;
     QLabel *m_stateCurrentModeValue = nullptr;
     QLabel *m_stateLastRefreshValue = nullptr;

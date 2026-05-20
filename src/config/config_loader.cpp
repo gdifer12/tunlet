@@ -240,6 +240,21 @@ config::DiagnosticsLocationMode parseLocationMode(const QString &modeText) {
     throw std::runtime_error(QString("unsupported diagnostics.connection.location.mode: %1").arg(modeText).toStdString());
 }
 
+config::LoggingLevel parseLoggingLevel(const QString &levelText) {
+    const QString normalized = levelText.trimmed().toLower();
+    if (normalized.isEmpty() || normalized == "info") {
+        return config::LoggingLevel::Info;
+    }
+    if (normalized == "warning") {
+        return config::LoggingLevel::Warning;
+    }
+    if (normalized == "error") {
+        return config::LoggingLevel::Error;
+    }
+
+    throw std::runtime_error(QString("unsupported logging.level: %1").arg(levelText).toStdString());
+}
+
 AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
     if (!root.IsMap()) {
         throw std::runtime_error("config root must be a map");
@@ -484,6 +499,49 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
         }
         config.tray.keepRunningWithoutWindow = readBool(tray, "keepRunningWithoutWindow", true);
         config.tray.startHidden = readBool(tray, "startHidden", false);
+    }
+
+    if (const YAML::Node logging = root["logging"]) {
+        if (!logging.IsMap()) {
+            throw std::runtime_error("logging must be a map");
+        }
+
+        config.logging.enabled = readBool(logging, "enabled", config.logging.enabled);
+        if (logging["level"]) {
+            if (!logging["level"].IsScalar()) {
+                throw std::runtime_error("logging.level must be a string");
+            }
+            config.logging.level = parseLoggingLevel(QString::fromStdString(logging["level"].as<std::string>()));
+        }
+        if (logging["textPath"]) {
+            if (!logging["textPath"].IsScalar()) {
+                throw std::runtime_error("logging.textPath must be a string");
+            }
+            config.logging.textPath = tunlet::app::resolveConfiguredPath(
+                QString::fromStdString(logging["textPath"].as<std::string>()),
+                config.configRoute,
+                fallbackBasePath);
+        }
+        if (logging["jsonlPath"]) {
+            if (!logging["jsonlPath"].IsScalar()) {
+                throw std::runtime_error("logging.jsonlPath must be a string");
+            }
+            config.logging.jsonlPath = tunlet::app::resolveConfiguredPath(
+                QString::fromStdString(logging["jsonlPath"].as<std::string>()),
+                config.configRoute,
+                fallbackBasePath);
+        }
+
+        if (config.logging.enabled &&
+            config.logging.textPath.trimmed().isEmpty() &&
+            config.logging.jsonlPath.trimmed().isEmpty()) {
+            throw std::runtime_error("logging.enabled requires logging.textPath or logging.jsonlPath");
+        }
+        if (!config.logging.textPath.trimmed().isEmpty() &&
+            !config.logging.jsonlPath.trimmed().isEmpty() &&
+            QFileInfo(config.logging.textPath).absoluteFilePath() == QFileInfo(config.logging.jsonlPath).absoluteFilePath()) {
+            throw std::runtime_error("logging.textPath and logging.jsonlPath must be different files");
+        }
     }
 
     if (const YAML::Node ui = root["ui"]) {

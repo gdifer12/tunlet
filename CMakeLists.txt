@@ -32,6 +32,7 @@ set(TUNLET_SOURCES
     src/diagnostics/diagnostics_parsing.cpp
     src/rules/ruleset_service.cpp
     src/diagnostics/diagnostics_service.cpp
+    src/logging/logging_service.cpp
     src/theme/theme_loader.cpp
     src/ui/editor_highlighting.cpp
     src/ui/main_window.cpp
@@ -74,6 +75,7 @@ if(BUILD_TESTING)
         tests/config_loader_tests.cpp
         tests/diagnostics_parsing_tests.cpp
         tests/geoip_provider_tests.cpp
+        tests/logging_service_tests.cpp
         tests/logical_mode_tests.cpp
         tests/mode_selection_state_tests.cpp
         tests/ruleset_service_tests.cpp

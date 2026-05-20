@@ -5,6 +5,7 @@
 #include "config/config_file_service.hpp"
 #include "config/config_loader.hpp"
 #include "diagnostics/diagnostics_service.hpp"
+#include "logging/logging_service.hpp"
 #include "rules/ruleset_service.hpp"
 #include "theme/theme_loader.hpp"
 #include "ui/main_window.hpp"
@@ -41,17 +42,27 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    tunlet::logging::LoggingService loggingService(config);
+    loggingService.logInfo("app.bootstrap",
+                           "Loaded tunlet configuration",
+                           {},
+                           {{"config_path", config.configPath}});
+
     QString qssError;
     if (!tunlet::theme::ThemeLoader::applyOptionalStylesheet(app, config.theme.qssPath, &qssError) &&
         !qssError.isEmpty()) {
+        loggingService.logWarning("app.bootstrap",
+                                  "Failed to apply optional theme stylesheet",
+                                  qssError,
+                                  {{"theme_path", config.theme.qssPath}});
         QMessageBox::warning(nullptr, "tunlet theme warning", qssError);
     }
 
     tunlet::clash::ClashApiClient clashClient(config.diagnostics.requestTimeoutMs);
-    tunlet::clash::ModeController modeController(config, &clashClient);
+    tunlet::clash::ModeController modeController(config, &clashClient, &loggingService);
     tunlet::config::ConfigFileService configFileService(config.editing);
     tunlet::rules::RuleSetService ruleSetService(config.editing);
-    tunlet::diagnostics::DiagnosticsService diagnosticsService(config, &clashClient);
+    tunlet::diagnostics::DiagnosticsService diagnosticsService(config, &clashClient, &loggingService);
     tunlet::ui::TrayController trayController;
     tunlet::app::RuntimeConfigApplier runtimeConfigApplier(
         &app,
@@ -60,6 +71,7 @@ int main(int argc, char *argv[]) {
         &configFileService,
         &ruleSetService,
         &diagnosticsService,
+        &loggingService,
         &trayController);
     tunlet::ui::MainWindow mainWindow(
         config,
@@ -68,6 +80,7 @@ int main(int argc, char *argv[]) {
         &diagnosticsService,
         &ruleSetService,
         &runtimeConfigApplier,
+        &loggingService,
         trayController.isTrayAvailable());
     const bool keepRunningInTray = trayController.isTrayAvailable() && config.tray.keepRunningWithoutWindow;
     const bool startHiddenInTray = trayController.isTrayAvailable() && config.tray.startHidden;
@@ -91,6 +104,11 @@ int main(int argc, char *argv[]) {
     if (!startHiddenInTray) {
         mainWindow.show();
     }
+    loggingService.logInfo("app.bootstrap",
+                           "Initialized runtime services",
+                           {},
+                           {{"tray_available", trayController.isTrayAvailable() ? "true" : "false"},
+                            {"start_hidden", startHiddenInTray ? "true" : "false"}});
     modeController.refreshStatus();
     diagnosticsService.start();
 

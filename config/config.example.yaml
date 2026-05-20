@@ -70,6 +70,12 @@ tray:
   keepRunningWithoutWindow: true
   startHidden: false
 
+logging:
+  enabled: false
+  level: "info" # info | warning | error
+  textPath: "tunlet/logs/tunlet.log" # optional human-readable text sink
+  jsonlPath: "tunlet/logs/tunlet.jsonl" # optional structured JSONL sink
+
 ui:
   textSelection:
     enableInformationalLabels: true

@@ -13,6 +13,7 @@ It is intentionally not a VPN manager, service manager, config generator, or net
 - Compact main window for control, diagnostics, and JSON rule-set editing
 - JSON validation and safe-save with optional backups
 - Optional command-driven connection diagnostics for IP, delay, DNS, and GeoLite2 location
+- Optional dual-sink file logging with human-readable text and JSON Lines output
 - Optional custom QSS theme file
 - Nix flake with `devShell` and package build
 
@@ -70,6 +71,7 @@ Top-level keys:
 - `theme`
 - `editing`
 - `tray`
+- `logging`
 - `ui`
 
 `configRoute` is the base directory used to resolve relative file paths in the config, for example `~/.config`.
@@ -110,13 +112,22 @@ This avoids hardcoding the complete list of supported mode values in the UI.
 - `keepRunningWithoutWindow`: when `true`, closing the main window hides it to tray instead of exiting
 - `startHidden`: when `true`, and a tray host is available, tunlet starts without showing the main window
 
+`logging` controls optional file logging:
+
+- `enabled`: enables or disables file logging entirely
+- `level`: minimum level written to sinks: `info`, `warning`, or `error`
+- `textPath`: optional human-readable append-only text log
+- `jsonlPath`: optional append-only JSON Lines log
+
+If `logging.enabled` is `true`, at least one sink path must be configured. If both sinks are configured they must point to different files. Relative sink paths resolve through `configRoute`.
+
 `ui` controls keyboard behavior and copyable UI text:
 
 - `textSelection.enableInformationalLabels`: when `true`, most informational labels in the UI can be selected and copied with the mouse
 - `keyboard.shortcuts.*`: Qt key-sequence strings for close, page navigation, selector opening, refresh, validate, save, and reload actions
 - any shortcut entry may be set to an empty string to disable that binding
 
-`Save and apply` and `Reload` on the `Settings / Info` page re-apply runtime configuration without restarting the process. `tray.startHidden` is the exception: it is stored immediately but only affects the next launch.
+`Save and apply` and `Reload` on the `Settings / Info` page re-apply runtime configuration without restarting the process. This includes logging level and sink paths. `tray.startHidden` is the exception: it is stored immediately but only affects the next launch.
 
 ## MVP behavior
 
@@ -125,6 +136,7 @@ This avoids hardcoding the complete list of supported mode values in the UI.
 - `Refresh runtime` and optional background mode sync both re-read the current Clash mode so UI and tray can catch external mode changes.
 - Additional profiles are listed and can be switched from the main window or tray menu.
 - The UI also shows the `mode-list` reported by `/configs`, so you can see which backend modes are actually available.
+- Logging is append-only in v1, supports text and JSONL sinks simultaneously, and applies sink/path/level changes live.
 - Rule-set files are edited as JSON text, validated before save, and written via safe-save semantics.
 - The YAML app config can be edited from the UI with validation and safe-save.
 - Diagnostics stay non-blocking and use explicit timeouts.
@@ -136,6 +148,7 @@ This avoids hardcoding the complete list of supported mode values in the UI.
 - `src/core`: shared domain types
 - `src/config`: YAML schema and loader
 - `src/clash`: Clash API client and mode controller
+- `src/logging`: live-configurable file logging service
 - `src/rules`: JSON file handling
 - `src/config/config_file_service.*`: UI-safe YAML config editing
 - `src/diagnostics`: periodic health plus command-driven connection probes

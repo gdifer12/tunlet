@@ -4,6 +4,7 @@
 #include "clash/mode_controller.hpp"
 #include "config/config_file_service.hpp"
 #include "diagnostics/diagnostics_service.hpp"
+#include "logging/logging_service.hpp"
 #include "rules/ruleset_service.hpp"
 #include "theme/theme_loader.hpp"
 #include "ui/tray_controller.hpp"
@@ -18,6 +19,7 @@ RuntimeConfigApplier::RuntimeConfigApplier(QApplication *application,
                                            config::ConfigFileService *configFileService,
                                            rules::RuleSetService *ruleSetService,
                                            diagnostics::DiagnosticsService *diagnosticsService,
+                                           logging::LoggingService *loggingService,
                                            ui::TrayController *trayController)
     : m_application(application),
       m_clashClient(clashClient),
@@ -25,10 +27,15 @@ RuntimeConfigApplier::RuntimeConfigApplier(QApplication *application,
       m_configFileService(configFileService),
       m_ruleSetService(ruleSetService),
       m_diagnosticsService(diagnosticsService),
+      m_loggingService(loggingService),
       m_trayController(trayController) {}
 
 RuntimeConfigApplyResult RuntimeConfigApplier::apply(const config::AppConfig &config) const {
     RuntimeConfigApplyResult result;
+
+    if (m_loggingService) {
+        m_loggingService->updateConfig(config);
+    }
 
     if (m_application && m_trayController) {
         const bool keepRunningInTray = m_trayController->isTrayAvailable() && config.tray.keepRunningWithoutWindow;
@@ -40,6 +47,12 @@ RuntimeConfigApplyResult RuntimeConfigApplier::apply(const config::AppConfig &co
         !theme::ThemeLoader::applyOptionalStylesheet(*m_application, config.theme.qssPath, &qssError) &&
         !qssError.isEmpty()) {
         result.warning = qssError;
+        if (m_loggingService) {
+            m_loggingService->logWarning("config.apply",
+                                         "Runtime config applied with theme warning",
+                                         qssError,
+                                         {{"theme_path", config.theme.qssPath}});
+        }
     }
 
     if (m_clashClient) {
@@ -58,6 +71,13 @@ RuntimeConfigApplyResult RuntimeConfigApplier::apply(const config::AppConfig &co
     if (m_diagnosticsService) {
         m_diagnosticsService->updateConfig(config);
         m_diagnosticsService->refreshNow();
+    }
+
+    if (m_loggingService && result.warning.trimmed().isEmpty()) {
+        m_loggingService->logInfo("config.apply",
+                                  "Applied runtime configuration",
+                                  {},
+                                  {{"config_path", config.configPath}});
     }
 
     return result;

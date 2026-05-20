@@ -19,6 +19,10 @@ namespace tunlet::clash {
 struct ModeStatus;
 }
 
+namespace tunlet::logging {
+class LoggingService;
+}
+
 namespace tunlet::diagnostics {
 
 struct DiagnosticsSnapshot {
@@ -55,7 +59,10 @@ class DiagnosticsService : public QObject {
     Q_OBJECT
 
 public:
-    DiagnosticsService(const config::AppConfig &config, clash::ClashApiClient *client, QObject *parent = nullptr);
+    DiagnosticsService(const config::AppConfig &config,
+                       clash::ClashApiClient *client,
+                       logging::LoggingService *loggingService = nullptr,
+                       QObject *parent = nullptr);
 
     void start();
     void refreshNow();
@@ -90,6 +97,7 @@ private:
 
     config::AppConfig m_config;
     clash::ClashApiClient *m_client = nullptr;
+    logging::LoggingService *m_logger = nullptr;
     QTimer m_timer;
     DiagnosticsSnapshot m_snapshot;
     QString m_lastObservedModeValue;
