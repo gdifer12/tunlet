@@ -531,6 +531,15 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
                 config.configRoute,
                 fallbackBasePath);
         }
+        if (const YAML::Node rotation = logging["rotation"]) {
+            if (!rotation.IsMap()) {
+                throw std::runtime_error("logging.rotation must be a map");
+            }
+            config.logging.rotation.enabled = readBool(rotation, "enabled", config.logging.rotation.enabled);
+            config.logging.rotation.maxFileBytes =
+                static_cast<qint64>(readInt(rotation, "maxFileBytes", static_cast<int>(config.logging.rotation.maxFileBytes)));
+            config.logging.rotation.keepFiles = readInt(rotation, "keepFiles", config.logging.rotation.keepFiles);
+        }
 
         if (config.logging.enabled &&
             config.logging.textPath.trimmed().isEmpty() &&
@@ -541,6 +550,14 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
             !config.logging.jsonlPath.trimmed().isEmpty() &&
             QFileInfo(config.logging.textPath).absoluteFilePath() == QFileInfo(config.logging.jsonlPath).absoluteFilePath()) {
             throw std::runtime_error("logging.textPath and logging.jsonlPath must be different files");
+        }
+        if (config.logging.rotation.enabled) {
+            if (config.logging.rotation.maxFileBytes <= 0) {
+                throw std::runtime_error("logging.rotation.maxFileBytes must be > 0 when rotation is enabled");
+            }
+            if (config.logging.rotation.keepFiles < 1) {
+                throw std::runtime_error("logging.rotation.keepFiles must be >= 1 when rotation is enabled");
+            }
         }
     }
 

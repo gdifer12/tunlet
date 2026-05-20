@@ -69,6 +69,10 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "  level: warning\n"
         << "  textPath: logs/tunlet.log\n"
         << "  jsonlPath: logs/tunlet.jsonl\n"
+        << "  rotation:\n"
+        << "    enabled: true\n"
+        << "    maxFileBytes: 4096\n"
+        << "    keepFiles: 3\n"
         << "ui:\n"
         << "  textSelection:\n"
         << "    enableInformationalLabels: false\n"
@@ -129,6 +133,9 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     REQUIRE(config.logging.level == tunlet::config::LoggingLevel::Warning);
     REQUIRE(config.logging.textPath == "/tmp/tunlet-root/logs/tunlet.log");
     REQUIRE(config.logging.jsonlPath == "/tmp/tunlet-root/logs/tunlet.jsonl");
+    REQUIRE(config.logging.rotation.enabled == true);
+    REQUIRE(config.logging.rotation.maxFileBytes == 4096);
+    REQUIRE(config.logging.rotation.keepFiles == 3);
     REQUIRE(config.ui.textSelection.enableInformationalLabels == false);
     REQUIRE(config.ui.keyboard.shortcuts.closeWindowPrimary == "Ctrl+Q");
     REQUIRE(config.ui.keyboard.shortcuts.closeWindowSecondary.isEmpty());
@@ -183,6 +190,9 @@ TEST_CASE("ConfigLoader derives default GeoIP paths from config directory", "[co
     REQUIRE(config.logging.level == tunlet::config::LoggingLevel::Info);
     REQUIRE(config.logging.textPath.isEmpty());
     REQUIRE(config.logging.jsonlPath.isEmpty());
+    REQUIRE(config.logging.rotation.enabled == false);
+    REQUIRE(config.logging.rotation.maxFileBytes == 0);
+    REQUIRE(config.logging.rotation.keepFiles == 0);
     REQUIRE(config.ui.textSelection.enableInformationalLabels == true);
     REQUIRE(config.ui.keyboard.shortcuts.closeWindowPrimary == "Esc");
     REQUIRE(config.ui.keyboard.shortcuts.closeWindowSecondary == "Q");
@@ -330,6 +340,48 @@ TEST_CASE("ConfigLoader rejects identical logging sink paths", "[config]") {
         + "  enabled: true\n"
         + "  textPath: /tmp/tunlet.log\n"
         + "  jsonlPath: /tmp/tunlet.log\n";
+
+    REQUIRE_THROWS(tunlet::config::ConfigLoader::loadFromData(config, "/tmp/tunlet/config.yaml"));
+}
+
+TEST_CASE("ConfigLoader rejects non-positive logging rotation size", "[config]") {
+    const QString config = QString()
+        + "clashApi:\n"
+        + "  host: 127.0.0.1\n"
+        + "  port: 9090\n"
+        + "ruleSets:\n"
+        + "  forceProxyPath: /tmp/force-proxy.json\n"
+        + "  forceDirectPath: /tmp/force-direct.json\n"
+        + "  autoProxyPath: /tmp/auto-proxy.json\n"
+        + "  autoDirectPath: /tmp/auto-direct.json\n"
+        + "logging:\n"
+        + "  enabled: true\n"
+        + "  textPath: /tmp/tunlet.log\n"
+        + "  rotation:\n"
+        + "    enabled: true\n"
+        + "    maxFileBytes: 0\n"
+        + "    keepFiles: 2\n";
+
+    REQUIRE_THROWS(tunlet::config::ConfigLoader::loadFromData(config, "/tmp/tunlet/config.yaml"));
+}
+
+TEST_CASE("ConfigLoader rejects invalid logging rotation retention", "[config]") {
+    const QString config = QString()
+        + "clashApi:\n"
+        + "  host: 127.0.0.1\n"
+        + "  port: 9090\n"
+        + "ruleSets:\n"
+        + "  forceProxyPath: /tmp/force-proxy.json\n"
+        + "  forceDirectPath: /tmp/force-direct.json\n"
+        + "  autoProxyPath: /tmp/auto-proxy.json\n"
+        + "  autoDirectPath: /tmp/auto-direct.json\n"
+        + "logging:\n"
+        + "  enabled: true\n"
+        + "  textPath: /tmp/tunlet.log\n"
+        + "  rotation:\n"
+        + "    enabled: true\n"
+        + "    maxFileBytes: 1024\n"
+        + "    keepFiles: 0\n";
 
     REQUIRE_THROWS(tunlet::config::ConfigLoader::loadFromData(config, "/tmp/tunlet/config.yaml"));
 }

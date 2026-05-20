@@ -75,6 +75,10 @@ logging:
   level: "info" # info | warning | error
   textPath: "tunlet/logs/tunlet.log" # optional human-readable text sink
   jsonlPath: "tunlet/logs/tunlet.jsonl" # optional structured JSONL sink
+  rotation:
+    enabled: false # enable size-based rotation for both sinks
+    maxFileBytes: 1048576 # rotate when appending the next entry would exceed this size
+    keepFiles: 5 # number of rotated archives to keep per sink, not counting the active file
 
 ui:
   textSelection:

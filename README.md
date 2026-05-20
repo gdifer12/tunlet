@@ -13,7 +13,7 @@ It is intentionally not a VPN manager, service manager, config generator, or net
 - Compact main window for control, diagnostics, and JSON rule-set editing
 - JSON validation and safe-save with optional backups
 - Optional command-driven connection diagnostics for IP, delay, DNS, and GeoLite2 location
-- Optional dual-sink file logging with human-readable text and JSON Lines output
+- Optional dual-sink file logging with human-readable text, JSON Lines output, and size-based rotation
 - Optional custom QSS theme file
 - Nix flake with `devShell` and package build
 
@@ -116,10 +116,15 @@ This avoids hardcoding the complete list of supported mode values in the UI.
 
 - `enabled`: enables or disables file logging entirely
 - `level`: minimum level written to sinks: `info`, `warning`, or `error`
-- `textPath`: optional human-readable append-only text log
-- `jsonlPath`: optional append-only JSON Lines log
+- `textPath`: optional human-readable text log sink
+- `jsonlPath`: optional JSON Lines log sink
+- `rotation.enabled`: enables or disables size-based rotation for both sinks
+- `rotation.maxFileBytes`: rotate a sink before appending the next entry that would exceed this size
+- `rotation.keepFiles`: number of rotated archives to keep per sink, not counting the active file
 
 If `logging.enabled` is `true`, at least one sink path must be configured. If both sinks are configured they must point to different files. Relative sink paths resolve through `configRoute`.
+
+If `logging.rotation.enabled` is `true`, both `rotation.maxFileBytes` and `rotation.keepFiles` are required. Rotation uses numbered suffixes such as `tunlet.log.1` and `tunlet.jsonl.1`, keeps the active base file separate from the archive count, and applies live on `Save and apply` and `Reload`. If an existing sink file already exceeds the configured limit, tunlet rotates it immediately when the logger is reopened.
 
 `ui` controls keyboard behavior and copyable UI text:
 
@@ -136,7 +141,7 @@ If `logging.enabled` is `true`, at least one sink path must be configured. If bo
 - `Refresh runtime` and optional background mode sync both re-read the current Clash mode so UI and tray can catch external mode changes.
 - Additional profiles are listed and can be switched from the main window or tray menu.
 - The UI also shows the `mode-list` reported by `/configs`, so you can see which backend modes are actually available.
-- Logging is append-only in v1, supports text and JSONL sinks simultaneously, and applies sink/path/level changes live.
+- Logging supports text and JSONL sinks simultaneously, applies sink/path/level/rotation changes live, and can stay append-only when rotation is disabled.
 - Rule-set files are edited as JSON text, validated before save, and written via safe-save semantics.
 - The YAML app config can be edited from the UI with validation and safe-save.
 - Diagnostics stay non-blocking and use explicit timeouts.

@@ -194,6 +194,23 @@ QString formatLoggingStatusText(const logging::LoggingStatus &status) {
     return "Unavailable";
 }
 
+QString formatByteSize(qint64 bytes) {
+    if (bytes < 0) {
+        return "Unavailable";
+    }
+
+    static const char *suffixes[] = {"B", "KiB", "MiB", "GiB", "TiB"};
+    double value = static_cast<double>(bytes);
+    int index = 0;
+    while (value >= 1024.0 && index < 4) {
+        value /= 1024.0;
+        ++index;
+    }
+
+    return index == 0 ? QString("%1 %2").arg(static_cast<qint64>(value)).arg(suffixes[index])
+                      : QString("%1 %2").arg(QString::number(value, 'f', 1)).arg(suffixes[index]);
+}
+
 QString formatLoggingSinkText(const QString &path, bool active, bool enabled) {
     if (path.trimmed().isEmpty()) {
         return "Off";
@@ -202,6 +219,27 @@ QString formatLoggingSinkText(const QString &path, bool active, bool enabled) {
         return QString("Configured (%1)").arg(compactPath(path));
     }
     return active ? compactPath(path) : QString("Unavailable (%1)").arg(compactPath(path));
+}
+
+QString formatLoggingRotationText(const logging::LoggingStatus &status) {
+    if (!status.rotationEnabled) {
+        return "Off";
+    }
+    return "Enabled";
+}
+
+QString formatLoggingRotationSizeText(const logging::LoggingStatus &status) {
+    if (!status.rotationEnabled) {
+        return "Off";
+    }
+    return formatByteSize(status.rotationMaxFileBytes);
+}
+
+QString formatLoggingRotationArchivesText(const logging::LoggingStatus &status) {
+    if (!status.rotationEnabled) {
+        return "Off";
+    }
+    return QString("%1 archives").arg(status.rotationKeepFiles);
 }
 
 QString compactProbeCommands(const config::AppConfig &config) {
@@ -1298,9 +1336,12 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     loggingGrid->setColumnStretch(1, 1);
     m_loggingStatusValue = buildKeyValueRow(loggingGrid, 0, "Logger state", loggingCard);
     m_loggingLevelValue = buildKeyValueRow(loggingGrid, 1, "Minimum level", loggingCard);
-    m_loggingTextPathValue = buildKeyValueRow(loggingGrid, 2, "Text log", loggingCard);
-    m_loggingJsonlPathValue = buildKeyValueRow(loggingGrid, 3, "JSONL log", loggingCard);
-    m_loggingLastErrorValue = buildKeyValueRow(loggingGrid, 4, "Last logger error", loggingCard);
+    m_loggingRotationValue = buildKeyValueRow(loggingGrid, 2, "Rotation", loggingCard);
+    m_loggingMaxSizeValue = buildKeyValueRow(loggingGrid, 3, "Max file size", loggingCard);
+    m_loggingArchivesValue = buildKeyValueRow(loggingGrid, 4, "Archives kept", loggingCard);
+    m_loggingTextPathValue = buildKeyValueRow(loggingGrid, 5, "Text log", loggingCard);
+    m_loggingJsonlPathValue = buildKeyValueRow(loggingGrid, 6, "JSONL log", loggingCard);
+    m_loggingLastErrorValue = buildKeyValueRow(loggingGrid, 7, "Last logger error", loggingCard);
     loggingLayout->addLayout(loggingGrid);
     pageLayout->addWidget(loggingCard);
 
@@ -2386,6 +2427,15 @@ void MainWindow::updateDashboardCards() {
     }
     if (m_loggingLevelValue) {
         m_loggingLevelValue->setText(displayModeName(logging::loggingLevelToString(m_lastLoggingStatus.level)));
+    }
+    if (m_loggingRotationValue) {
+        m_loggingRotationValue->setText(formatLoggingRotationText(m_lastLoggingStatus));
+    }
+    if (m_loggingMaxSizeValue) {
+        m_loggingMaxSizeValue->setText(formatLoggingRotationSizeText(m_lastLoggingStatus));
+    }
+    if (m_loggingArchivesValue) {
+        m_loggingArchivesValue->setText(formatLoggingRotationArchivesText(m_lastLoggingStatus));
     }
     if (m_loggingTextPathValue) {
         m_loggingTextPathValue->setText(

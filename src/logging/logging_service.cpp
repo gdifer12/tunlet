@@ -5,7 +5,6 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QTextStream>
 
 namespace tunlet::logging {
 namespace {
@@ -52,6 +51,9 @@ bool statusEquals(const LoggingStatus &lhs, const LoggingStatus &rhs) {
            lhs.level == rhs.level &&
            lhs.textPath == rhs.textPath &&
            lhs.jsonlPath == rhs.jsonlPath &&
+           lhs.rotationEnabled == rhs.rotationEnabled &&
+           lhs.rotationMaxFileBytes == rhs.rotationMaxFileBytes &&
+           lhs.rotationKeepFiles == rhs.rotationKeepFiles &&
            lhs.textSinkActive == rhs.textSinkActive &&
            lhs.jsonlSinkActive == rhs.jsonlSinkActive &&
            lhs.lastError == rhs.lastError;
@@ -59,6 +61,10 @@ bool statusEquals(const LoggingStatus &lhs, const LoggingStatus &rhs) {
 
 QString utcTimestampText(const QDateTime &time) {
     return time.toUTC().toString("yyyy-MM-ddTHH:mm:ss.zzz'Z'");
+}
+
+QString archivePath(const QString &basePath, int index) {
+    return QString("%1.%2").arg(basePath).arg(index);
 }
 
 }  // namespace
@@ -133,11 +139,15 @@ void LoggingService::log(config::LoggingLevel level,
     event.context = context;
 
     if (m_status.textSinkActive) {
-        const QString line = formatTextLine(event);
-        QTextStream stream(m_textFile);
-        stream << line << '\n';
-        stream.flush();
-        if (stream.status() != QTextStream::Ok || m_textFile->error() != QFileDevice::NoError) {
+        const QByteArray line = formatTextLine(event).toUtf8() + '\n';
+        QString rotationError;
+        if (!ensureSinkReadyForWrite(
+                m_textFile, m_status.textPath, "text", line.size(), &m_status.textSinkActive, &rotationError)) {
+            recordSinkFailure("text",
+                              rotationError,
+                              /*deactivateTextSink=*/true,
+                              /*deactivateJsonlSink=*/false);
+        } else if (m_textFile->write(line) != line.size() || !m_textFile->flush()) {
             recordSinkFailure("text",
                               QString("Failed to write text log %1: %2")
                                   .arg(m_status.textPath, m_textFile->errorString()),
@@ -148,7 +158,14 @@ void LoggingService::log(config::LoggingLevel level,
 
     if (m_status.jsonlSinkActive) {
         const QByteArray line = formatJsonLine(event) + '\n';
-        if (m_jsonlFile->write(line) != line.size() || !m_jsonlFile->flush()) {
+        QString rotationError;
+        if (!ensureSinkReadyForWrite(
+                m_jsonlFile, m_status.jsonlPath, "jsonl", line.size(), &m_status.jsonlSinkActive, &rotationError)) {
+            recordSinkFailure("jsonl",
+                              rotationError,
+                              /*deactivateTextSink=*/false,
+                              /*deactivateJsonlSink=*/true);
+        } else if (m_jsonlFile->write(line) != line.size() || !m_jsonlFile->flush()) {
             recordSinkFailure("jsonl",
                               QString("Failed to write JSONL log %1: %2")
                                   .arg(m_status.jsonlPath, m_jsonlFile->errorString()),
@@ -166,6 +183,9 @@ void LoggingService::reconfigure() {
     newStatus.level = m_config.level;
     newStatus.textPath = m_config.textPath;
     newStatus.jsonlPath = m_config.jsonlPath;
+    newStatus.rotationEnabled = m_config.rotation.enabled;
+    newStatus.rotationMaxFileBytes = m_config.rotation.maxFileBytes;
+    newStatus.rotationKeepFiles = m_config.rotation.keepFiles;
 
     if (m_config.enabled) {
         QString errorText;
@@ -204,6 +224,30 @@ bool LoggingService::openSink(QFile *file, const QString &path, const QString &s
         return false;
     }
 
+    if (!openFileForAppend(file, path, sinkName, errorOut)) {
+        return false;
+    }
+
+    if (m_config.rotation.enabled && file->size() > m_config.rotation.maxFileBytes) {
+        if (file->isOpen()) {
+            file->close();
+        }
+        if (!rotateArchives(path, sinkName, errorOut) || !openFileForAppend(file, path, sinkName, errorOut)) {
+            return false;
+        }
+    }
+
+    if (active) {
+        *active = true;
+    }
+    return true;
+}
+
+bool LoggingService::openFileForAppend(QFile *file, const QString &path, const QString &sinkName, QString *errorOut) {
+    if (errorOut) {
+        errorOut->clear();
+    }
+
     const QFileInfo fileInfo(path);
     QDir dir = fileInfo.dir();
     if (!dir.exists() && !dir.mkpath(".")) {
@@ -223,11 +267,95 @@ bool LoggingService::openSink(QFile *file, const QString &path, const QString &s
         }
         return false;
     }
+    return true;
+}
 
-    if (active) {
-        *active = true;
+bool LoggingService::rotateSink(QFile *file, const QString &path, const QString &sinkName, QString *errorOut) {
+    if (!rotateArchives(path, sinkName, errorOut)) {
+        return false;
+    }
+    return openFileForAppend(file, path, sinkName, errorOut);
+}
+
+bool LoggingService::rotateArchives(const QString &path, const QString &sinkName, QString *errorOut) {
+    if (errorOut) {
+        errorOut->clear();
+    }
+
+    const int keepFiles = m_config.rotation.keepFiles;
+    if (keepFiles < 1) {
+        return true;
+    }
+
+    const QString oldestArchive = archivePath(path, keepFiles);
+    if (QFile::exists(oldestArchive) && !QFile::remove(oldestArchive)) {
+        if (errorOut) {
+            *errorOut = QString("Failed to remove old %1 log archive %2").arg(sinkName, oldestArchive);
+        }
+        return false;
+    }
+
+    for (int index = keepFiles - 1; index >= 1; --index) {
+        const QString sourcePath = archivePath(path, index);
+        if (!QFile::exists(sourcePath)) {
+            continue;
+        }
+
+        const QString destinationPath = archivePath(path, index + 1);
+        if (QFile::exists(destinationPath) && !QFile::remove(destinationPath)) {
+            if (errorOut) {
+                *errorOut = QString("Failed to replace %1 log archive %2").arg(sinkName, destinationPath);
+            }
+            return false;
+        }
+        if (!QFile::rename(sourcePath, destinationPath)) {
+            if (errorOut) {
+                *errorOut = QString("Failed to rotate %1 log archive %2 to %3")
+                                .arg(sinkName, sourcePath, destinationPath);
+            }
+            return false;
+        }
+    }
+
+    if (QFile::exists(path) && !QFile::rename(path, archivePath(path, 1))) {
+        if (errorOut) {
+            *errorOut = QString("Failed to rotate active %1 log %2").arg(sinkName, path);
+        }
+        return false;
     }
     return true;
+}
+
+bool LoggingService::ensureSinkReadyForWrite(QFile *file,
+                                             const QString &path,
+                                             const QString &sinkName,
+                                             qint64 incomingBytes,
+                                             bool *active,
+                                             QString *errorOut) {
+    if (errorOut) {
+        errorOut->clear();
+    }
+    if (!m_config.rotation.enabled || !file || !file->isOpen()) {
+        return true;
+    }
+
+    const qint64 currentSize = file->size();
+    if (currentSize < 0 || currentSize == 0 || currentSize + incomingBytes <= m_config.rotation.maxFileBytes) {
+        return true;
+    }
+
+    if (active) {
+        *active = false;
+    }
+    if (file->isOpen()) {
+        file->close();
+    }
+
+    const bool reopened = rotateSink(file, path, sinkName, errorOut);
+    if (active) {
+        *active = reopened;
+    }
+    return reopened;
 }
 
 void LoggingService::closeSinks() {

@@ -103,10 +103,17 @@ enum class LoggingLevel {
 };
 
 struct LoggingConfig {
+    struct RotationConfig {
+        bool enabled = false;
+        qint64 maxFileBytes = 0;
+        int keepFiles = 0;
+    };
+
     bool enabled = false;
     LoggingLevel level = LoggingLevel::Info;
     QString textPath;
     QString jsonlPath;
+    RotationConfig rotation;
 };
 
 struct UiTextSelectionConfig {

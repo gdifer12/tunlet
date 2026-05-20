@@ -217,6 +217,9 @@ private:
     QLabel *m_infoThemeValue = nullptr;
     QLabel *m_loggingStatusValue = nullptr;
     QLabel *m_loggingLevelValue = nullptr;
+    QLabel *m_loggingRotationValue = nullptr;
+    QLabel *m_loggingMaxSizeValue = nullptr;
+    QLabel *m_loggingArchivesValue = nullptr;
     QLabel *m_loggingTextPathValue = nullptr;
     QLabel *m_loggingJsonlPathValue = nullptr;
     QLabel *m_loggingLastErrorValue = nullptr;

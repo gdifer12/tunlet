@@ -27,6 +27,9 @@ struct LoggingStatus {
     config::LoggingLevel level = config::LoggingLevel::Info;
     QString textPath;
     QString jsonlPath;
+    bool rotationEnabled = false;
+    qint64 rotationMaxFileBytes = 0;
+    int rotationKeepFiles = 0;
     bool textSinkActive = false;
     bool jsonlSinkActive = false;
     QString lastError;
@@ -69,6 +72,15 @@ private:
              const LogContext &context);
     void reconfigure();
     bool openSink(QFile *file, const QString &path, const QString &sinkName, bool *active, QString *errorOut);
+    bool openFileForAppend(QFile *file, const QString &path, const QString &sinkName, QString *errorOut);
+    bool rotateSink(QFile *file, const QString &path, const QString &sinkName, QString *errorOut);
+    bool rotateArchives(const QString &path, const QString &sinkName, QString *errorOut);
+    bool ensureSinkReadyForWrite(QFile *file,
+                                 const QString &path,
+                                 const QString &sinkName,
+                                 qint64 incomingBytes,
+                                 bool *active,
+                                 QString *errorOut);
     void closeSinks();
     void recordSinkFailure(const QString &sinkName, const QString &detail, bool deactivateTextSink, bool deactivateJsonlSink);
     void publishStatus();
