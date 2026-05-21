@@ -52,6 +52,11 @@ struct DiagnosticsSnapshot {
     QString configurationSummary;
     QString configurationDetail;
     QString externalDetail;
+    bool runtimeRefreshInFlight = false;
+    bool locationRefreshInFlight = false;
+    bool runtimeDiagnosticsStale = false;
+    QDateTime lastSuccessfulRuntimeRefreshAt;
+    QString lastRuntimeRefreshFailureDetail;
     QDateTime lastUpdated;
 };
 
@@ -81,11 +86,34 @@ private:
         ModeChangeBootstrap,
     };
 
+    enum class RuntimeProbeKind {
+        PublicIp,
+        Delay,
+        Dns,
+    };
+
+    struct RuntimeRefreshProgress {
+        quint64 generation = 0;
+        bool active = false;
+        bool publicIpDone = false;
+        bool delayDone = false;
+        bool dnsDone = false;
+        bool publicIpOk = false;
+        bool delayOk = false;
+        bool dnsOk = false;
+        QString publicIpFailure;
+        QString delayFailure;
+        QString dnsFailure;
+    };
+
     void handleTrafficResult(const clash::TrafficResult &result);
     void handleHealthResult(const clash::HealthCheckResult &result);
     void updateConfigurationSnapshot();
     void resetConnectionSnapshot(const QString &reason);
     void abortProbe(QPointer<QProcess> &process);
+    void markRuntimeRefreshStarted(quint64 generation);
+    void noteRuntimeProbeResult(quint64 generation, RuntimeProbeKind kind, bool ok, const QString &failureDetail = {});
+    void finalizeRuntimeRefreshIfComplete(quint64 generation);
     void refreshNow(RefreshOrigin origin);
     void startIpv4Probe(quint64 generation, RefreshOrigin origin);
     void startTimingProbe(quint64 generation);
@@ -102,6 +130,7 @@ private:
     DiagnosticsSnapshot m_snapshot;
     QString m_lastObservedModeValue;
     quint64 m_probeGeneration = 0;
+    RuntimeRefreshProgress m_runtimeRefreshProgress;
     QPointer<QProcess> m_ipv4Process;
     QPointer<QProcess> m_timingProcess;
     QPointer<QProcess> m_dnsProcess;

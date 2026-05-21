@@ -177,6 +177,7 @@ void DiagnosticsService::refreshNow(RefreshOrigin origin) {
 
     ++m_probeGeneration;
     const quint64 generation = m_probeGeneration;
+    markRuntimeRefreshStarted(generation);
     m_snapshot.externalDetail = "Refreshing connection diagnostics";
     emitSnapshotUpdate();
 
@@ -203,6 +204,7 @@ void DiagnosticsService::refreshLocationDataNow() {
         if (m_logger) {
             m_logger->logWarning("diagnostics.location", "Location data refresh failed", "Location provider unavailable.");
         }
+        m_snapshot.locationRefreshInFlight = false;
         emitSnapshotUpdate();
         return;
     }
@@ -217,10 +219,12 @@ void DiagnosticsService::refreshLocationDataNow() {
                                  "Location data refresh could not start",
                                  "Public IP unavailable; run Refresh runtime before updating location data.");
         }
+        m_snapshot.locationRefreshInFlight = false;
         emitSnapshotUpdate();
         return;
     }
 
+    m_snapshot.locationRefreshInFlight = true;
     m_snapshot.externalDetail = "Refreshing location data";
     emitSnapshotUpdate();
 
@@ -228,8 +232,11 @@ void DiagnosticsService::refreshLocationDataNow() {
         publicIp,
         [this, publicIp](const GeoIpResolveResult &asyncResult) {
             if (!publicIp.isEmpty() && publicIp != m_snapshot.publicIp.trimmed()) {
+                m_snapshot.locationRefreshInFlight = false;
+                emitSnapshotUpdate();
                 return;
             }
+            m_snapshot.locationRefreshInFlight = false;
             applyGeoIpResolveResult(asyncResult);
             if (m_logger) {
                 if (asyncResult.state == GeoIpResolveState::Unavailable) {
@@ -248,6 +255,7 @@ void DiagnosticsService::refreshLocationDataNow() {
             }
             emitSnapshotUpdate();
         });
+    m_snapshot.locationRefreshInFlight = immediate.state == GeoIpResolveState::Pending;
     applyGeoIpResolveResult(immediate);
     if (m_logger) {
         if (immediate.state == GeoIpResolveState::Unavailable) {
@@ -414,7 +422,107 @@ void DiagnosticsService::resetConnectionSnapshot(const QString &reason) {
     m_snapshot.dnsSummary = "Unavailable";
     m_snapshot.dnsDetail = reason;
     m_snapshot.externalDetail = reason;
+    m_snapshot.runtimeRefreshInFlight = false;
+    m_snapshot.locationRefreshInFlight = false;
+    m_snapshot.runtimeDiagnosticsStale = false;
+    m_snapshot.lastSuccessfulRuntimeRefreshAt = {};
+    m_snapshot.lastRuntimeRefreshFailureDetail = reason;
+    m_runtimeRefreshProgress = {};
     emitSnapshotUpdate();
+}
+
+void DiagnosticsService::markRuntimeRefreshStarted(quint64 generation) {
+    m_runtimeRefreshProgress = {
+        .generation = generation,
+        .active = true,
+        .publicIpDone = false,
+        .delayDone = false,
+        .dnsDone = false,
+        .publicIpOk = false,
+        .delayOk = false,
+        .dnsOk = false,
+    };
+    m_snapshot.runtimeRefreshInFlight = true;
+    m_snapshot.lastRuntimeRefreshFailureDetail.clear();
+}
+
+void DiagnosticsService::noteRuntimeProbeResult(quint64 generation,
+                                                RuntimeProbeKind kind,
+                                                bool ok,
+                                                const QString &failureDetail) {
+    if (!m_runtimeRefreshProgress.active || m_runtimeRefreshProgress.generation != generation) {
+        return;
+    }
+
+    switch (kind) {
+    case RuntimeProbeKind::PublicIp:
+        m_runtimeRefreshProgress.publicIpDone = true;
+        m_runtimeRefreshProgress.publicIpOk = ok;
+        m_runtimeRefreshProgress.publicIpFailure = ok ? QString() : failureDetail;
+        break;
+    case RuntimeProbeKind::Delay:
+        m_runtimeRefreshProgress.delayDone = true;
+        m_runtimeRefreshProgress.delayOk = ok;
+        m_runtimeRefreshProgress.delayFailure = ok ? QString() : failureDetail;
+        break;
+    case RuntimeProbeKind::Dns:
+        m_runtimeRefreshProgress.dnsDone = true;
+        m_runtimeRefreshProgress.dnsOk = ok;
+        m_runtimeRefreshProgress.dnsFailure = ok ? QString() : failureDetail;
+        break;
+    }
+
+    finalizeRuntimeRefreshIfComplete(generation);
+}
+
+void DiagnosticsService::finalizeRuntimeRefreshIfComplete(quint64 generation) {
+    if (!m_runtimeRefreshProgress.active || m_runtimeRefreshProgress.generation != generation ||
+        !m_runtimeRefreshProgress.publicIpDone || !m_runtimeRefreshProgress.delayDone || !m_runtimeRefreshProgress.dnsDone) {
+        return;
+    }
+
+    const bool success =
+        m_runtimeRefreshProgress.publicIpOk && m_runtimeRefreshProgress.delayOk && m_runtimeRefreshProgress.dnsOk;
+    m_snapshot.runtimeRefreshInFlight = false;
+    m_runtimeRefreshProgress.active = false;
+    if (success) {
+        m_snapshot.runtimeDiagnosticsStale = false;
+        m_snapshot.lastSuccessfulRuntimeRefreshAt = QDateTime::currentDateTime();
+        m_snapshot.lastRuntimeRefreshFailureDetail.clear();
+        return;
+    }
+
+    QStringList failureParts;
+    if (!m_runtimeRefreshProgress.publicIpOk && !m_runtimeRefreshProgress.publicIpFailure.trimmed().isEmpty()) {
+        failureParts.push_back(QString("IP: %1").arg(m_runtimeRefreshProgress.publicIpFailure));
+    }
+    if (!m_runtimeRefreshProgress.delayOk && !m_runtimeRefreshProgress.delayFailure.trimmed().isEmpty()) {
+        failureParts.push_back(QString("Delay: %1").arg(m_runtimeRefreshProgress.delayFailure));
+    }
+    if (!m_runtimeRefreshProgress.dnsOk && !m_runtimeRefreshProgress.dnsFailure.trimmed().isEmpty()) {
+        failureParts.push_back(QString("DNS: %1").arg(m_runtimeRefreshProgress.dnsFailure));
+    }
+    m_snapshot.delayDnsMs = -1;
+    m_snapshot.delayConnectMs = -1;
+    m_snapshot.delayTlsMs = -1;
+    m_snapshot.delayTotalMs = -1;
+    if (m_snapshot.delayDetail.trimmed().isEmpty() || !m_runtimeRefreshProgress.delayOk) {
+        m_snapshot.delayDetail = "Delay unavailable";
+    }
+    m_snapshot.runtimeDiagnosticsStale =
+        isUsableIpAddress(m_snapshot.publicIp) ||
+        (!m_snapshot.dnsSummary.trimmed().isEmpty() && m_snapshot.dnsSummary != "Unavailable") ||
+        (!m_snapshot.location.trimmed().isEmpty() && m_snapshot.location != "Location unavailable" &&
+         m_snapshot.location != "Location disabled");
+    m_snapshot.lastRuntimeRefreshFailureDetail =
+        failureParts.isEmpty() ? QString("Runtime diagnostics refresh failed")
+                               : QString("Runtime diagnostics refresh failed: %1").arg(failureParts.join(" | "));
+    if (m_logger) {
+        m_logger->logWarning("diagnostics.runtime",
+                             "Runtime diagnostics refresh failed",
+                             m_snapshot.lastRuntimeRefreshFailureDetail,
+                             {{"generation", QString::number(generation)}});
+    }
 }
 
 void DiagnosticsService::abortProbe(QPointer<QProcess> &process) {
@@ -467,6 +575,7 @@ void DiagnosticsService::startIpv4Probe(quint64 generation, RefreshOrigin origin
             m_snapshot.location.clear();
             m_snapshot.locationDetail = "Waiting for a usable public IP before resolving location.";
         }
+        noteRuntimeProbeResult(generation, RuntimeProbeKind::PublicIp, false, failure);
         emitSnapshotUpdate();
         process->deleteLater();
     });
@@ -497,6 +606,7 @@ void DiagnosticsService::startIpv4Probe(quint64 generation, RefreshOrigin origin
                         m_snapshot.publicIpDetail = QString("Resolved via %1").arg(commandName(m_config.diagnostics.connection.ipv4));
                         m_snapshot.externalDetail = QString("Public IP updated: %1").arg(ip);
                         readLocationFromPublicIp(origin);
+                        noteRuntimeProbeResult(generation, RuntimeProbeKind::PublicIp, true);
                         emitSnapshotUpdate();
                         process->deleteLater();
                         return;
@@ -507,6 +617,7 @@ void DiagnosticsService::startIpv4Probe(quint64 generation, RefreshOrigin origin
                         m_snapshot.location.clear();
                         m_snapshot.locationDetail = "Waiting for a usable public IP before resolving location.";
                     }
+                    noteRuntimeProbeResult(generation, RuntimeProbeKind::PublicIp, false, m_snapshot.publicIpDetail);
                 } else {
                     m_snapshot.publicIpDetail = failure;
                     m_snapshot.externalDetail = failure;
@@ -514,6 +625,7 @@ void DiagnosticsService::startIpv4Probe(quint64 generation, RefreshOrigin origin
                         m_snapshot.location.clear();
                         m_snapshot.locationDetail = "Waiting for a usable public IP before resolving location.";
                     }
+                    noteRuntimeProbeResult(generation, RuntimeProbeKind::PublicIp, false, failure);
                 }
 
                 emitSnapshotUpdate();
@@ -548,6 +660,7 @@ void DiagnosticsService::startTimingProbe(quint64 generation) {
         const QString failure = QString("Delay probe failed to start: %1").arg(process->errorString());
         m_snapshot.delayDetail = failure;
         m_snapshot.externalDetail = failure;
+        noteRuntimeProbeResult(generation, RuntimeProbeKind::Delay, false, failure);
         emitSnapshotUpdate();
         process->deleteLater();
     });
@@ -578,17 +691,20 @@ void DiagnosticsService::startTimingProbe(quint64 generation) {
                         m_snapshot.delayTotalMs = parsed.totalMs;
                         m_snapshot.delayDetail = timingBreakdown(m_snapshot);
                         m_snapshot.externalDetail = QString("Delay updated: %1 ms").arg(parsed.totalMs);
+                        noteRuntimeProbeResult(generation, RuntimeProbeKind::Delay, true);
                         emitSnapshotUpdate();
                         process->deleteLater();
                         return;
                     }
                     m_snapshot.delayDetail = QString("Delay parse failed: %1").arg(parseFailure);
                     m_snapshot.externalDetail = m_snapshot.delayDetail;
+                    noteRuntimeProbeResult(generation, RuntimeProbeKind::Delay, false, m_snapshot.delayDetail);
                 } else {
                     const QString failure =
                         describeProcessFailure("Delay probe", process, stdErr, m_config.diagnostics.requestTimeoutMs);
                     m_snapshot.delayDetail = failure;
                     m_snapshot.externalDetail = failure;
+                    noteRuntimeProbeResult(generation, RuntimeProbeKind::Delay, false, failure);
                 }
 
                 emitSnapshotUpdate();
@@ -623,6 +739,7 @@ void DiagnosticsService::startDnsProbe(quint64 generation) {
         const QString failure = QString("DNS probe failed to start: %1").arg(process->errorString());
         m_snapshot.dnsDetail = failure;
         m_snapshot.externalDetail = failure;
+        noteRuntimeProbeResult(generation, RuntimeProbeKind::Dns, false, failure);
         emitSnapshotUpdate();
         process->deleteLater();
     });
@@ -650,17 +767,20 @@ void DiagnosticsService::startDnsProbe(quint64 generation) {
                         m_snapshot.dnsSummary = dnsSummary;
                         m_snapshot.dnsDetail = QString("Resolved via %1").arg(commandName(m_config.diagnostics.connection.dns));
                         m_snapshot.externalDetail = "DNS updated";
+                        noteRuntimeProbeResult(generation, RuntimeProbeKind::Dns, true);
                         emitSnapshotUpdate();
                         process->deleteLater();
                         return;
                     }
                     m_snapshot.dnsDetail = QString("DNS parse failed: %1").arg(parseFailure);
                     m_snapshot.externalDetail = m_snapshot.dnsDetail;
+                    noteRuntimeProbeResult(generation, RuntimeProbeKind::Dns, false, m_snapshot.dnsDetail);
                 } else {
                     const QString failure =
                         describeProcessFailure("DNS probe", process, stdErr, m_config.diagnostics.requestTimeoutMs);
                     m_snapshot.dnsDetail = failure;
                     m_snapshot.externalDetail = failure;
+                    noteRuntimeProbeResult(generation, RuntimeProbeKind::Dns, false, failure);
                 }
 
                 emitSnapshotUpdate();

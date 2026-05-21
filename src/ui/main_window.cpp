@@ -838,6 +838,7 @@ QWidget *MainWindow::buildHealthStrip() {
         }
         showActionMessage("Requested diagnostics recheck", 3000);
     });
+    m_footerRecheckButton = recheckButton;
     layout->addWidget(recheckButton, 0, Qt::AlignVCenter);
     return strip;
 }
@@ -1011,9 +1012,11 @@ QWidget *MainWindow::buildDashboardPage() {
     auto *refreshButton = new QPushButton("Reload config", selectorCard);
     refreshButton->setObjectName("ghostButton");
     connect(refreshButton, &QPushButton::clicked, this, &MainWindow::reloadSettingsFile);
+    m_reloadConfigButton = refreshButton;
     auto *reloadButton = new QPushButton("Refresh runtime", selectorCard);
     reloadButton->setObjectName("ghostButton");
     connect(reloadButton, &QPushButton::clicked, this, &MainWindow::refreshRuntime);
+    m_refreshRuntimeButton = reloadButton;
     m_refreshLocationDataButton = new QPushButton("Refresh location data", selectorCard);
     m_refreshLocationDataButton->setObjectName("ghostButton");
     m_refreshLocationDataButton->setAttribute(Qt::WA_AlwaysShowToolTips, true);
@@ -1394,6 +1397,7 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     connect(saveButton, &QPushButton::clicked, this, &MainWindow::saveSettingsFile);
     connect(reloadButton, &QPushButton::clicked, this, &MainWindow::reloadSettingsFile);
     connect(validateButton, &QPushButton::clicked, this, &MainWindow::validateSettingsText);
+    m_settingsReloadButton = reloadButton;
     editorButtons->addWidget(saveButton);
     editorButtons->addWidget(reloadButton);
     editorButtons->addWidget(validateButton);
@@ -2035,6 +2039,50 @@ void MainWindow::setSettingsBanner(const QString &text, const QString &tone) {
     }
 }
 
+void MainWindow::setLabelTone(QLabel *label, const QString &tone) {
+    if (!label) {
+        return;
+    }
+    label->setProperty("tone", tone);
+    repolish(label);
+}
+
+void MainWindow::setLabelStale(QLabel *label, bool stale) {
+    if (!label) {
+        return;
+    }
+    label->setProperty("stale", stale);
+    repolish(label);
+}
+
+void MainWindow::updateRuntimeActionButtons() {
+    const bool runtimeRefreshInFlight = m_lastDiagnostics.runtimeRefreshInFlight;
+    const bool combinedRuntimeBusy = runtimeRefreshInFlight || m_lastStatus.busy;
+    const bool locationRefreshInFlight = m_lastDiagnostics.locationRefreshInFlight;
+
+    if (m_footerRecheckButton) {
+        m_footerRecheckButton->setEnabled(!combinedRuntimeBusy);
+        m_footerRecheckButton->setIcon(combinedRuntimeBusy ? QIcon(":/icons/recheck-busy.svg")
+                                                           : style()->standardIcon(QStyle::SP_BrowserReload));
+        m_footerRecheckButton->setToolTip(combinedRuntimeBusy ? "Refreshing runtime state..."
+                                                              : "Recheck diagnostics");
+    }
+    if (m_reloadConfigButton) {
+        m_reloadConfigButton->setEnabled(!combinedRuntimeBusy);
+    }
+    if (m_refreshRuntimeButton) {
+        m_refreshRuntimeButton->setEnabled(!combinedRuntimeBusy);
+    }
+    if (m_settingsReloadButton) {
+        m_settingsReloadButton->setEnabled(!combinedRuntimeBusy);
+    }
+    if (m_refreshLocationDataButton) {
+        m_refreshLocationDataButton->setEnabled(m_refreshLocationDataButton->isEnabled() &&
+                                                !combinedRuntimeBusy &&
+                                                !locationRefreshInFlight);
+    }
+}
+
 void MainWindow::updateInformationalLabelSelection() {
     const bool enableSelection = m_config.ui.textSelection.enableInformationalLabels;
     const auto labels = findChildren<QLabel *>();
@@ -2251,10 +2299,12 @@ void MainWindow::updateDashboardCards() {
     const QString rawMode = m_lastStatus.currentModeValue.isEmpty() ? "unknown" : m_lastStatus.currentModeValue;
     const bool reachable = m_lastStatus.reachable;
     const bool busy = m_lastStatus.busy;
+    const bool runtimeRefreshInFlight = m_lastDiagnostics.runtimeRefreshInFlight;
+    const bool runtimeDiagnosticsStale = m_lastDiagnostics.runtimeDiagnosticsStale;
     const QString tone = busy ? "neutral" : reachable ? "ok" : "warn";
     const QString apiSummary = busy ? "Refreshing" : reachable ? "API reachable" : "API unavailable";
     const QString detailText = m_lastStatus.detail.isEmpty() ? "Waiting for first refresh." : m_lastStatus.detail;
-    const QDateTime lastRefresh = m_lastDiagnostics.lastUpdated.isValid() ? m_lastDiagnostics.lastUpdated : m_lastStatus.lastUpdated;
+    const QDateTime lastRefresh = m_lastDiagnostics.lastSuccessfulRuntimeRefreshAt;
     const QString refreshText = lastRefreshLabel(lastRefresh);
     const QString publicIp = m_lastDiagnostics.publicIp.isEmpty() ? "-" : m_lastDiagnostics.publicIp;
     const bool publicIpUsable = hasUsableIpAddress(m_lastDiagnostics.publicIp);
@@ -2292,6 +2342,13 @@ void MainWindow::updateDashboardCards() {
                                            m_lastDiagnostics.externalDetail != "Refreshing connection diagnostics"
                                        ? m_lastDiagnostics.externalDetail
                                        : detailText;
+    const QString lastReloadDetailText = runtimeRefreshInFlight
+                                             ? "Refreshing connection diagnostics"
+                                             : !m_lastDiagnostics.lastRuntimeRefreshFailureDetail.trimmed().isEmpty()
+                                                   ? (lastRefresh.isValid()
+                                                          ? QString("Latest refresh failed; showing last successful diagnostics state")
+                                                          : QString("Latest refresh failed; no successful diagnostics refresh yet"))
+                                                   : QString("Last combined diagnostics refresh");
     bool canRefreshLocationData = false;
     QString refreshLocationTooltip = "Location data refresh unavailable";
     switch (m_config.diagnostics.connection.location.mode) {
@@ -2352,9 +2409,13 @@ void MainWindow::updateDashboardCards() {
     }
     if (m_lastReloadValue) {
         m_lastReloadValue->setText(refreshText);
+        setLabelTone(m_lastReloadValue,
+                     !m_lastDiagnostics.lastRuntimeRefreshFailureDetail.trimmed().isEmpty() ? "warn" : QString());
     }
     if (m_lastReloadDetail) {
-        m_lastReloadDetail->setText(reachable ? "Last combined diagnostics refresh" : detailText);
+        m_lastReloadDetail->setText(lastReloadDetailText);
+        setLabelTone(m_lastReloadDetail,
+                     !m_lastDiagnostics.lastRuntimeRefreshFailureDetail.trimmed().isEmpty() ? "warn" : QString());
     }
     if (m_refreshLocationDataButton) {
         m_refreshLocationDataButton->setEnabled(canRefreshLocationData);
@@ -2473,9 +2534,15 @@ void MainWindow::updateDashboardCards() {
     }
     if (m_stateLastRefreshValue) {
         m_stateLastRefreshValue->setText(refreshText);
+        setLabelTone(m_stateLastRefreshValue,
+                     !m_lastDiagnostics.lastRuntimeRefreshFailureDetail.trimmed().isEmpty() ? "warn" : QString());
     }
     if (m_stateLastDetailValue) {
-        m_stateLastDetailValue->setText(lastDetailText);
+        m_stateLastDetailValue->setText(!m_lastDiagnostics.lastRuntimeRefreshFailureDetail.trimmed().isEmpty()
+                                            ? m_lastDiagnostics.lastRuntimeRefreshFailureDetail
+                                            : lastDetailText);
+        setLabelTone(m_stateLastDetailValue,
+                     !m_lastDiagnostics.lastRuntimeRefreshFailureDetail.trimmed().isEmpty() ? "warn" : QString());
     }
     if (m_stateExternalIpValue) {
         m_stateExternalIpValue->setText(publicIp == "-" ? "Unavailable" : publicIp);
@@ -2513,8 +2580,40 @@ void MainWindow::updateDashboardCards() {
     }
     if (m_footerReloadValue) {
         m_footerReloadValue->setText(refreshText);
+        setLabelTone(m_footerReloadValue,
+                     !m_lastDiagnostics.lastRuntimeRefreshFailureDetail.trimmed().isEmpty() ? "warn" : QString());
     }
 
+    const QList<QLabel *> staleLabels = {
+        m_footerIpValue,
+        m_footerDnsValue,
+        m_connectionTunValue,
+        m_connectionDnsValue,
+        m_connectionRoutingValue,
+        m_controllerAddressValue,
+        m_stateExternalIpValue,
+        m_stateLocationValue,
+        m_stateAsnOrgValue,
+        m_stateLocationSourceValue,
+        m_footerIpLocationBadgeLabel,
+    };
+    for (QLabel *label : staleLabels) {
+        setLabelStale(label, runtimeDiagnosticsStale);
+    }
+    const QList<QLabel *> freshLabels = {
+        m_connectionDiagnosticsValue,
+        m_connectionDelayDnsValue,
+        m_connectionDelayConnectValue,
+        m_connectionDelayTlsValue,
+        m_footerLatencyValue,
+        m_lastReloadValue,
+        m_footerReloadValue,
+        m_stateLastRefreshValue,
+    };
+    for (QLabel *label : freshLabels) {
+        setLabelStale(label, false);
+    }
+    updateRuntimeActionButtons();
     updateFooterIpContentWidth();
     updateModeSelectionUi();
 }

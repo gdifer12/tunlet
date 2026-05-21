@@ -3,6 +3,7 @@
     <file>icons/nav-main.svg</file>
     <file>icons/nav-rules.svg</file>
     <file>icons/nav-settings.svg</file>
+    <file>icons/recheck-busy.svg</file>
     <file>icons/tunlet.svg</file>
     <file>styles/default.qss.in</file>
     <file>themes/default.theme.json</file>

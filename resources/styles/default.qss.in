@@ -145,6 +145,16 @@ QLabel#recentActionValue {
     font-size: {{font.size.small}}px;
 }
 
+QLabel#summaryValue[tone="warn"],
+QLabel#summarySub[tone="warn"],
+QLabel#kvValue[tone="warn"],
+QLabel#metricValue[tone="warn"],
+QLabel#metricValueCompact[tone="warn"],
+QLabel#metricValueLead[tone="warn"],
+QLabel#healthValue[tone="warn"] {
+    color: {{color.state.warning.text}};
+}
+
 QLabel#eyebrow,
 QLabel#summaryKey,
 QLabel#metricLabel,
@@ -205,6 +215,17 @@ QLabel#recentActionValue {
     color: {{color.text.recent}};
     font-weight: 500;
     font-size: {{font.size.small}}px;
+}
+
+QLabel#summaryValue[stale="true"],
+QLabel#summarySub[stale="true"],
+QLabel#metricValueLead[stale="true"],
+QLabel#metricValueCompact[stale="true"],
+QLabel#metricValue[stale="true"],
+QLabel#kvValue[stale="true"],
+QLabel#healthValue[stale="true"],
+QLabel#healthInlineBadge[stale="true"] {
+    color: {{color.text.disabled}};
 }
 
 QPushButton,

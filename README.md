@@ -147,12 +147,14 @@ If `logging.rotation.enabled` is `true`, both `rotation.maxFileBytes` and `rotat
 - The app loads YAML config at startup and validates required fields.
 - The current Clash mode is shown prominently and can be switched through configured profiles.
 - `Refresh runtime` and optional background mode sync both re-read the current Clash mode so UI and tray can catch external mode changes.
+- `Refresh runtime` tracks a combined diagnostics result: `Last reload` means the last successful IP/timing/DNS refresh, failed refreshes clear delay values and mark the remaining diagnostics values stale instead of pretending new data arrived.
 - Additional profiles are listed and can be switched from the main window or tray menu.
 - The UI also shows the `mode-list` reported by `/configs`, so you can see which backend modes are actually available.
 - Logging supports text and JSONL sinks simultaneously, applies sink/path/level/rotation changes live, and can stay append-only when rotation is disabled.
 - Rule-set files are edited as JSON text, validated before save, and written via safe-save semantics.
 - The YAML app config can be edited from the UI with validation and safe-save.
 - Diagnostics stay non-blocking and use explicit timeouts.
+- Runtime refresh and config-reload buttons disable briefly while their async refresh cycle is in flight.
 
 ## Project layout
 

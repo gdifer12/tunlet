@@ -115,6 +115,9 @@ private:
     void setModeBanner(const QString &title, const QString &message, const QString &tone);
     void setRuleBanner(const QString &title, const QString &message, const QString &tone);
     void setSettingsBanner(const QString &text, const QString &tone);
+    void setLabelTone(QLabel *label, const QString &tone);
+    void setLabelStale(QLabel *label, bool stale);
+    void updateRuntimeActionButtons();
     void repolish(QWidget *widget);
     void updateInformationalLabelSelection();
     void updateFooterIpContentWidth();
@@ -189,6 +192,9 @@ private:
     QLabel *m_modeTriggerValueLabel = nullptr;
     QLabel *m_modeTriggerSubLabel = nullptr;
     QLabel *m_modeTriggerCaretLabel = nullptr;
+    QPushButton *m_reloadConfigButton = nullptr;
+    QPushButton *m_refreshRuntimeButton = nullptr;
+    QPushButton *m_settingsReloadButton = nullptr;
     QPushButton *m_refreshLocationDataButton = nullptr;
 
     QLabel *m_rulePageStatusLabel = nullptr;
@@ -247,6 +253,7 @@ private:
     QLabel *m_footerIpLocationBadgeLabel = nullptr;
     QLabel *m_footerDnsValue = nullptr;
     QLabel *m_footerReloadValue = nullptr;
+    QToolButton *m_footerRecheckButton = nullptr;
     QLabel *m_recentActionLabel = nullptr;
     QWidget *m_selectorPopup = nullptr;
     QWidget *m_selectorPopupTrigger = nullptr;
