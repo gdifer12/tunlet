@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
     tunlet::config::ConfigFileService configFileService(config.editing);
     tunlet::rules::RuleSetService ruleSetService(config.editing);
     tunlet::diagnostics::DiagnosticsService diagnosticsService(config, &clashClient, &loggingService);
-    tunlet::ui::TrayController trayController;
+    tunlet::ui::TrayController trayController(&loggingService);
     tunlet::app::RuntimeConfigApplier runtimeConfigApplier(
         &app,
         &clashClient,
@@ -91,11 +91,14 @@ int main(int argc, char *argv[]) {
 
     trayController.setup(modeController.status(), modeController.profiles(), diagnosticsService.snapshot(), config.tray);
     QObject::connect(&trayController, &tunlet::ui::TrayController::openMainWindowRequested, &mainWindow, &tunlet::ui::MainWindow::showAndRaise);
-    QObject::connect(&trayController, &tunlet::ui::TrayController::refreshRequested, &modeController, &tunlet::clash::ModeController::refreshStatus);
+    QObject::connect(&trayController,
+                     &tunlet::ui::TrayController::refreshRequested,
+                     &modeController,
+                     &tunlet::clash::ModeController::refreshStatusFromTray);
     QObject::connect(&trayController,
                      &tunlet::ui::TrayController::refreshRequested,
                      &diagnosticsService,
-                     qOverload<>(&tunlet::diagnostics::DiagnosticsService::refreshNow));
+                     &tunlet::diagnostics::DiagnosticsService::refreshFromTray);
     QObject::connect(&trayController, &tunlet::ui::TrayController::switchRequested, &modeController, &tunlet::clash::ModeController::switchMode);
     QObject::connect(&trayController, &tunlet::ui::TrayController::quitRequested, &app, &QApplication::quit);
     QObject::connect(&modeController, &tunlet::clash::ModeController::statusUpdated, &trayController, &tunlet::ui::TrayController::updateStatus);
@@ -115,7 +118,7 @@ int main(int argc, char *argv[]) {
                            {},
                            {{"tray_available", trayController.isTrayAvailable() ? "true" : "false"},
                             {"start_hidden", startHiddenInTray ? "true" : "false"}});
-    modeController.refreshStatus();
+    modeController.refreshStatusForStartup();
     diagnosticsService.start();
 
     return app.exec();

@@ -96,7 +96,6 @@ struct EditingConfig {
 struct TrayConfig {
     bool keepRunningWithoutWindow = true;
     bool startHidden = false;
-    int interactiveRefreshIntervalMs = 5000;
 };
 
 enum class LoggingLevel {

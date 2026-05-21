@@ -69,11 +69,11 @@ RuntimeConfigApplyResult RuntimeConfigApplier::apply(const config::AppConfig &co
     }
     if (m_modeController) {
         m_modeController->updateConfig(config);
-        m_modeController->refreshStatus();
+        m_modeController->refreshStatusFromConfigApply();
     }
     if (m_diagnosticsService) {
         m_diagnosticsService->updateConfig(config);
-        m_diagnosticsService->refreshNow();
+        m_diagnosticsService->refreshFromConfigApply();
     }
 
     if (m_loggingService && result.warning.trimmed().isEmpty()) {

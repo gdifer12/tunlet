@@ -1,5 +1,7 @@
 #include "ui/tray_controller.hpp"
 
+#include "logging/logging_service.hpp"
+
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
@@ -10,13 +12,10 @@
 #include <QScreen>
 #include <QSignalBlocker>
 #include <QSystemTrayIcon>
-#include <QTimer>
 
 namespace tunlet::ui {
 
 namespace {
-
-constexpr int kMenuSessionIdleExpiryMs = 1500;
 
 QString currentModeLabel(const clash::ModeStatus &status) {
     if (!status.currentProfileName.isEmpty() && status.currentProfileName != "unknown") {
@@ -79,7 +78,8 @@ QAction *addStaticAction(QMenu *menu, const QString &text) {
 
 }  // namespace
 
-TrayController::TrayController(QObject *parent) : QObject(parent), m_trayIcon(new QSystemTrayIcon(QIcon(":/icons/tunlet.svg"), this)) {
+TrayController::TrayController(logging::LoggingService *loggingService, QObject *parent)
+    : QObject(parent), m_logger(loggingService), m_trayIcon(new QSystemTrayIcon(QIcon(":/icons/tunlet.svg"), this)) {
     m_menu = new QMenu();
     m_menu->setObjectName("trayMenu");
     m_menu->setSeparatorsCollapsible(false);
@@ -88,27 +88,6 @@ TrayController::TrayController(QObject *parent) : QObject(parent), m_trayIcon(ne
 
     connect(m_trayIcon, &QSystemTrayIcon::activated, this, &TrayController::handleTrayActivation);
     connect(m_menu, &QMenu::aboutToShow, this, &TrayController::handleMenuAboutToShow);
-    connect(m_menu, &QMenu::aboutToHide, this, &TrayController::handleMenuAboutToHide);
-    connect(m_menu, &QMenu::hovered, this, [this](QAction *) {
-        if (m_interactiveSessionActive || m_reopenRequested) {
-            scheduleSessionExpiryIfMenuDoesNotReopen();
-        }
-    });
-    connect(m_menu, &QMenu::triggered, this, [this](QAction *) {
-        if (m_interactiveSessionActive || m_reopenRequested) {
-            scheduleSessionExpiryIfMenuDoesNotReopen();
-        }
-    });
-
-    m_interactiveRefreshTimer.setSingleShot(false);
-    m_interactiveRefreshTimer.setInterval(m_config.interactiveRefreshIntervalMs);
-    connect(&m_interactiveRefreshTimer, &QTimer::timeout, this, &TrayController::emitMenuRefreshIfIdle);
-
-    m_reopenExpiryTimer.setSingleShot(true);
-    m_reopenExpiryTimer.setInterval(kMenuSessionIdleExpiryMs);
-    connect(&m_reopenExpiryTimer, &QTimer::timeout, this, [this]() {
-        endInteractiveSession();
-    });
 
     rebuildMenu();
     updateToolTip();
@@ -132,13 +111,9 @@ void TrayController::setup(const clash::ModeStatus &status,
     m_diagnostics = diagnostics;
     m_visibleDiagnostics = diagnostics;
     m_config = config;
-    m_interactiveSessionActive = false;
     m_refreshRequestPending = false;
     m_switchRequestPending = false;
-    m_reopenRequested = false;
     m_lastMenuAnchor = QPoint();
-    m_interactiveRefreshTimer.setInterval(m_config.interactiveRefreshIntervalMs);
-    m_reopenExpiryTimer.stop();
     rebuildMenu();
     refreshMenuPresentation();
 }
@@ -175,18 +150,10 @@ void TrayController::updateDiagnostics(const diagnostics::DiagnosticsSnapshot &s
 
 void TrayController::updateConfig(const config::TrayConfig &config) {
     m_config = config;
-    if (m_interactiveSessionActive) {
-        m_interactiveRefreshTimer.start(m_config.interactiveRefreshIntervalMs);
-        scheduleSessionExpiryIfMenuDoesNotReopen();
-    } else {
-        m_interactiveRefreshTimer.stop();
-        m_interactiveRefreshTimer.setInterval(m_config.interactiveRefreshIntervalMs);
-    }
 }
 
 void TrayController::handleTrayActivation(QSystemTrayIcon::ActivationReason reason) {
     if (reason == QSystemTrayIcon::Trigger) {
-        endInteractiveSession();
         emit openMainWindowRequested();
         return;
     }
@@ -196,51 +163,10 @@ void TrayController::handleTrayActivation(QSystemTrayIcon::ActivationReason reas
     }
 }
 
-void TrayController::beginInteractiveSession() {
-    m_interactiveSessionActive = true;
-    m_reopenRequested = false;
-    cancelPendingSessionExpiry();
-    m_interactiveRefreshTimer.start(m_config.interactiveRefreshIntervalMs);
-    scheduleSessionExpiryIfMenuDoesNotReopen();
-}
-
-void TrayController::endInteractiveSession() {
-    m_interactiveSessionActive = false;
-    m_reopenRequested = false;
-    m_interactiveRefreshTimer.stop();
-    cancelPendingSessionExpiry();
-}
-
-void TrayController::scheduleSessionExpiryIfMenuDoesNotReopen() {
-    m_reopenExpiryTimer.start(kMenuSessionIdleExpiryMs);
-}
-
-void TrayController::cancelPendingSessionExpiry() {
-    m_reopenExpiryTimer.stop();
-}
-
 void TrayController::handleMenuAboutToShow() {
-    beginInteractiveSession();
     m_lastMenuAnchor = menuPopupPosition();
     refreshMenuPresentation();
-    requestMenuRefresh();
-}
-
-void TrayController::handleMenuAboutToHide() {
-    if (!m_reopenRequested) {
-        endInteractiveSession();
-        return;
-    }
-
-    const QPoint anchor = m_lastMenuAnchor.isNull() ? menuPopupPosition() : m_lastMenuAnchor;
-    scheduleSessionExpiryIfMenuDoesNotReopen();
-    QTimer::singleShot(0, this, [this, anchor]() {
-        if (!m_menu) {
-            return;
-        }
-        m_lastMenuAnchor = anchor;
-        m_menu->popup(anchor);
-    });
+    requestMenuRefresh(MenuRefreshOrigin::MenuOpen);
 }
 
 QPoint TrayController::menuPopupPosition() const {
@@ -323,11 +249,7 @@ void TrayController::rebuildMenu() {
             action->setToolTip(toolTip);
             action->setStatusTip(toolTip);
             m_modeActionGroup->addAction(action);
-            connect(action, &QAction::triggered, this, [this, profileName = profile.name]() {
-                m_reopenRequested = true;
-                scheduleSessionExpiryIfMenuDoesNotReopen();
-                requestModeSwitch(profileName);
-            });
+            connect(action, &QAction::triggered, this, [this, profileName = profile.name]() { requestModeSwitch(profileName); });
             m_modeActions.insert(profile.name, action);
         }
     }
@@ -339,20 +261,14 @@ void TrayController::rebuildMenu() {
 
     m_openAction = m_menu->addAction("Open tunlet");
     connect(m_openAction, &QAction::triggered, this, [this]() {
-        endInteractiveSession();
         emit openMainWindowRequested();
     });
 
     m_refreshAction = m_menu->addAction("Refresh");
-    connect(m_refreshAction, &QAction::triggered, this, [this]() {
-        m_reopenRequested = true;
-        scheduleSessionExpiryIfMenuDoesNotReopen();
-        requestMenuRefresh();
-    });
+    connect(m_refreshAction, &QAction::triggered, this, [this]() { requestMenuRefresh(MenuRefreshOrigin::MenuAction); });
 
     m_quitAction = m_menu->addAction("Quit");
     connect(m_quitAction, &QAction::triggered, this, [this]() {
-        endInteractiveSession();
         emit quitRequested();
     });
 }
@@ -392,18 +308,39 @@ void TrayController::updateToolTip() {
                                     delaySummaryLabel(m_visibleDiagnostics)));
 }
 
-void TrayController::emitMenuRefreshIfIdle() {
-    if (!m_interactiveSessionActive) {
-        return;
+QString TrayController::menuRefreshOriginName(MenuRefreshOrigin origin) const {
+    switch (origin) {
+    case MenuRefreshOrigin::MenuOpen:
+        return "menu_open";
+    case MenuRefreshOrigin::MenuAction:
+    default:
+        return "menu_action";
     }
-    requestMenuRefresh();
 }
 
-void TrayController::requestMenuRefresh() {
+void TrayController::logTrayInfo(const QString &summary, const QString &detail, const logging::LogContext &context) const {
+    if (m_logger) {
+        m_logger->logInfo("tray", summary, detail, context);
+    }
+}
+
+void TrayController::requestMenuRefresh(MenuRefreshOrigin origin) {
     if (m_refreshRequestPending || m_status.busy || m_diagnostics.runtimeRefreshInFlight) {
+        QString blockedBy = "unknown";
+        if (m_refreshRequestPending) {
+            blockedBy = "refresh_pending";
+        } else if (m_status.busy) {
+            blockedBy = "mode_busy";
+        } else if (m_diagnostics.runtimeRefreshInFlight) {
+            blockedBy = "diagnostics_busy";
+        }
+        logTrayInfo("Skipped tray runtime refresh request",
+                    {},
+                    {{"origin", menuRefreshOriginName(origin)}, {"blocked_by", blockedBy}});
         return;
     }
     m_refreshRequestPending = true;
+    logTrayInfo("Requested tray runtime refresh", {}, {{"origin", menuRefreshOriginName(origin)}});
     emit refreshRequested();
 }
 
@@ -415,9 +352,15 @@ void TrayController::requestModeSwitch(const QString &profileName) {
         return;
     }
     if (m_switchRequestPending || m_status.busy || m_status.switchInFlight) {
+        logTrayInfo("Skipped tray mode switch request",
+                    {},
+                    {{"profile", profileName},
+                     {"blocked_by", m_switchRequestPending ? "switch_pending"
+                                                           : (m_status.busy ? "mode_busy" : "switch_in_flight")}});
         return;
     }
     m_switchRequestPending = true;
+    logTrayInfo("Requested tray mode switch", {}, {{"profile", profileName}});
     emit switchRequested(profileName);
 }
 
@@ -433,7 +376,6 @@ void TrayController::hideContextMenu() {
     if (!m_menu) {
         return;
     }
-    endInteractiveSession();
     m_menu->hide();
 }
 

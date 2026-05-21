@@ -71,7 +71,6 @@ editing:
 tray:
   keepRunningWithoutWindow: true
   startHidden: false
-  interactiveRefreshIntervalMs: 5000 # while a native tray menu session is active, runtime refresh runs at this faster cadence
 
 logging:
   enabled: false

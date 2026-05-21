@@ -135,7 +135,7 @@ DiagnosticsService::DiagnosticsService(const config::AppConfig &config,
     : QObject(parent), m_config(config), m_client(client), m_logger(loggingService) {
     connect(m_client, &clash::ClashApiClient::healthCheckFinished, this, &DiagnosticsService::handleHealthResult);
     connect(m_client, &clash::ClashApiClient::trafficFinished, this, &DiagnosticsService::handleTrafficResult);
-    connect(&m_timer, &QTimer::timeout, this, qOverload<>(&DiagnosticsService::refreshNow));
+    connect(&m_timer, &QTimer::timeout, this, &DiagnosticsService::refreshFromPeriodicTimer);
     rebuildGeoIpProvider();
     updateConfigurationSnapshot();
 }
@@ -167,6 +167,36 @@ void DiagnosticsService::refreshNow() {
     refreshNow(RefreshOrigin::RuntimeReread);
 }
 
+void DiagnosticsService::refreshFromTray() {
+    refreshNow(RefreshOrigin::TrayInteractive);
+}
+
+void DiagnosticsService::refreshFromConfigApply() {
+    refreshNow(RefreshOrigin::ConfigApply);
+}
+
+QString DiagnosticsService::refreshOriginName(RefreshOrigin origin) const {
+    switch (origin) {
+    case RefreshOrigin::TrayInteractive:
+        return "tray";
+    case RefreshOrigin::ConfigApply:
+        return "config_apply";
+    case RefreshOrigin::PeriodicTimer:
+        return "periodic_timer";
+    case RefreshOrigin::StartupBootstrap:
+        return "startup";
+    case RefreshOrigin::ModeChangeBootstrap:
+        return "mode_change";
+    case RefreshOrigin::RuntimeReread:
+    default:
+        return "manual_ui";
+    }
+}
+
+void DiagnosticsService::refreshFromPeriodicTimer() {
+    refreshNow(RefreshOrigin::PeriodicTimer);
+}
+
 void DiagnosticsService::refreshNow(RefreshOrigin origin) {
     if (!m_config.diagnostics.enabled) {
         return;
@@ -177,8 +207,16 @@ void DiagnosticsService::refreshNow(RefreshOrigin origin) {
 
     ++m_probeGeneration;
     const quint64 generation = m_probeGeneration;
-    markRuntimeRefreshStarted(generation);
+    markRuntimeRefreshStarted(generation, origin);
     m_snapshot.externalDetail = "Refreshing connection diagnostics";
+    if (m_logger) {
+        m_logger->logInfo("diagnostics.runtime",
+                          "Started runtime diagnostics refresh",
+                          {},
+                          {{"generation", QString::number(generation)},
+                           {"origin", refreshOriginName(origin)},
+                           {"location_mode", locationModeName(m_config.diagnostics.connection.location.mode)}});
+    }
     emitSnapshotUpdate();
 
     startIpv4Probe(generation, origin);
@@ -283,7 +321,6 @@ void DiagnosticsService::refreshLocationDataNow() {
 }
 
 void DiagnosticsService::updateConfig(const config::AppConfig &config) {
-    const bool wasEnabled = m_config.diagnostics.enabled;
     m_config = config;
     m_lastObservedModeValue.clear();
     rebuildGeoIpProvider();
@@ -299,11 +336,7 @@ void DiagnosticsService::updateConfig(const config::AppConfig &config) {
     }
 
     m_timer.start(m_config.diagnostics.refreshIntervalMs);
-    if (!wasEnabled) {
-        refreshNow();
-    } else {
-        emitSnapshotUpdate();
-    }
+    emitSnapshotUpdate();
 }
 
 DiagnosticsSnapshot DiagnosticsService::snapshot() const {
@@ -431,10 +464,11 @@ void DiagnosticsService::resetConnectionSnapshot(const QString &reason) {
     emitSnapshotUpdate();
 }
 
-void DiagnosticsService::markRuntimeRefreshStarted(quint64 generation) {
+void DiagnosticsService::markRuntimeRefreshStarted(quint64 generation, RefreshOrigin origin) {
     m_runtimeRefreshProgress = {
         .generation = generation,
         .active = true,
+        .origin = origin,
         .publicIpDone = false,
         .delayDone = false,
         .dnsDone = false,
@@ -481,6 +515,7 @@ void DiagnosticsService::finalizeRuntimeRefreshIfComplete(quint64 generation) {
         return;
     }
 
+    const RefreshOrigin origin = m_runtimeRefreshProgress.origin;
     const bool success =
         m_runtimeRefreshProgress.publicIpOk && m_runtimeRefreshProgress.delayOk && m_runtimeRefreshProgress.dnsOk;
     m_snapshot.runtimeRefreshInFlight = false;
@@ -489,6 +524,21 @@ void DiagnosticsService::finalizeRuntimeRefreshIfComplete(quint64 generation) {
         m_snapshot.runtimeDiagnosticsStale = false;
         m_snapshot.lastSuccessfulRuntimeRefreshAt = QDateTime::currentDateTime();
         m_snapshot.lastRuntimeRefreshFailureDetail.clear();
+        if (m_logger) {
+            m_logger->logInfo("diagnostics.runtime",
+                              "Runtime diagnostics refresh completed",
+                              QString("Public IP %1 · Delay %2 · DNS %3")
+                                  .arg(m_snapshot.publicIp,
+                                       m_snapshot.delayTotalMs >= 0 ? QString("%1 ms").arg(m_snapshot.delayTotalMs)
+                                                                    : QString("unavailable"),
+                                       m_snapshot.dnsSummary),
+                              {{"generation", QString::number(generation)},
+                               {"origin", refreshOriginName(origin)},
+                               {"public_ip", m_snapshot.publicIp},
+                               {"delay_ms", m_snapshot.delayTotalMs >= 0 ? QString::number(m_snapshot.delayTotalMs)
+                                                                         : QString("-1")},
+                               {"dns_summary", m_snapshot.dnsSummary}});
+        }
         return;
     }
 
@@ -521,7 +571,8 @@ void DiagnosticsService::finalizeRuntimeRefreshIfComplete(quint64 generation) {
         m_logger->logWarning("diagnostics.runtime",
                              "Runtime diagnostics refresh failed",
                              m_snapshot.lastRuntimeRefreshFailureDetail,
-                             {{"generation", QString::number(generation)}});
+                             {{"generation", QString::number(generation)},
+                              {"origin", refreshOriginName(origin)}});
     }
 }
 

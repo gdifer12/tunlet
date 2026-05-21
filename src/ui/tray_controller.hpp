@@ -5,13 +5,18 @@
 
 #include <QPoint>
 #include <QHash>
+#include <QMap>
 #include <QObject>
 #include <QSystemTrayIcon>
-#include <QTimer>
 
 class QAction;
 class QActionGroup;
 class QMenu;
+
+namespace tunlet::logging {
+class LoggingService;
+using LogContext = QMap<QString, QString>;
+}
 
 namespace tunlet::ui {
 
@@ -19,7 +24,7 @@ class TrayController : public QObject {
     Q_OBJECT
 
 public:
-    explicit TrayController(QObject *parent = nullptr);
+    explicit TrayController(logging::LoggingService *loggingService = nullptr, QObject *parent = nullptr);
     ~TrayController() override;
 
     void setup(const clash::ModeStatus &status,
@@ -40,11 +45,14 @@ signals:
     void quitRequested();
 
 private:
+    enum class MenuRefreshOrigin {
+        MenuOpen,
+        MenuAction,
+    };
+
     void handleTrayActivation(QSystemTrayIcon::ActivationReason reason);
-    void beginInteractiveSession();
-    void endInteractiveSession();
-    void scheduleSessionExpiryIfMenuDoesNotReopen();
-    void cancelPendingSessionExpiry();
+    QString menuRefreshOriginName(MenuRefreshOrigin origin) const;
+    void logTrayInfo(const QString &summary, const QString &detail = {}, const logging::LogContext &context = {}) const;
     QPoint menuPopupPosition() const;
     void syncVisibleStatus();
     void syncVisibleDiagnostics();
@@ -52,17 +60,16 @@ private:
     void rebuildMenu();
     void refreshMenuPresentation();
     void updateToolTip();
-    void requestMenuRefresh();
+    void requestMenuRefresh(MenuRefreshOrigin origin);
     void requestModeSwitch(const QString &profileName);
 
 private slots:
     void handleMenuAboutToShow();
-    void handleMenuAboutToHide();
     void showContextMenu();
     void hideContextMenu();
-    void emitMenuRefreshIfIdle();
 
 private:
+    logging::LoggingService *m_logger = nullptr;
     QSystemTrayIcon *m_trayIcon = nullptr;
     QMenu *m_menu = nullptr;
     clash::ModeStatus m_status;
@@ -71,12 +78,8 @@ private:
     diagnostics::DiagnosticsSnapshot m_diagnostics;
     diagnostics::DiagnosticsSnapshot m_visibleDiagnostics;
     config::TrayConfig m_config;
-    QTimer m_interactiveRefreshTimer;
-    QTimer m_reopenExpiryTimer;
-    bool m_interactiveSessionActive = false;
     bool m_refreshRequestPending = false;
     bool m_switchRequestPending = false;
-    bool m_reopenRequested = false;
     QPoint m_lastMenuAnchor;
     QAction *m_modeSummaryAction = nullptr;
     QAction *m_apiSummaryAction = nullptr;

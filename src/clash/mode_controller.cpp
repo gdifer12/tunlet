@@ -28,9 +28,50 @@ ModeController::ModeController(const config::AppConfig &config,
 }
 
 void ModeController::refreshStatus() {
+    refreshStatus(RefreshOrigin::ManualUi);
+}
+
+void ModeController::refreshStatusFromTray() {
+    refreshStatus(RefreshOrigin::Tray);
+}
+
+void ModeController::refreshStatusFromConfigApply() {
+    refreshStatus(RefreshOrigin::ConfigApply);
+}
+
+void ModeController::refreshStatusForStartup() {
+    refreshStatus(RefreshOrigin::Startup);
+}
+
+QString ModeController::refreshOriginName(RefreshOrigin origin) const {
+    switch (origin) {
+    case RefreshOrigin::Tray:
+        return "tray";
+    case RefreshOrigin::ConfigApply:
+        return "config_apply";
+    case RefreshOrigin::Startup:
+        return "startup";
+    case RefreshOrigin::BackgroundTimer:
+        return "background_timer";
+    case RefreshOrigin::PostSwitchVerify:
+        return "post_switch_verify";
+    case RefreshOrigin::ManualUi:
+    default:
+        return "manual_ui";
+    }
+}
+
+void ModeController::refreshStatus(RefreshOrigin origin) {
     m_status.busy = true;
     m_status.detail = "Refreshing status...";
     emit statusUpdated(m_status);
+
+    if (m_logger) {
+        m_logger->logInfo("mode.sync",
+                          "Started Clash mode refresh",
+                          {},
+                          {{"origin", refreshOriginName(origin)}, {"endpoint", m_status.endpointLabel}});
+    }
 
     m_client->checkHealth(m_config.clashApi);
     m_client->fetchCurrentMode(m_config.clashApi);
@@ -88,8 +129,16 @@ QVector<config::ClashModeProfile> ModeController::profiles() const {
 }
 
 void ModeController::configureModeSyncTimer() {
+    const bool wasActive = m_modeSyncTimer.isActive();
+    const int previousIntervalMs = m_modeSyncTimer.interval();
     if (m_config.clashApi.modeSyncIntervalMs <= 0) {
         m_modeSyncTimer.stop();
+        if (m_logger && (wasActive || previousIntervalMs > 0)) {
+            m_logger->logInfo("mode.sync",
+                              "Disabled background mode sync timer",
+                              {},
+                              {{"endpoint", m_status.endpointLabel}});
+        }
         return;
     }
 
@@ -97,13 +146,22 @@ void ModeController::configureModeSyncTimer() {
     if (!m_modeSyncTimer.isActive()) {
         m_modeSyncTimer.start();
     }
+    if (m_logger &&
+        (!wasActive || previousIntervalMs != m_config.clashApi.modeSyncIntervalMs)) {
+        m_logger->logInfo("mode.sync",
+                          wasActive ? "Updated background mode sync timer interval"
+                                    : "Enabled background mode sync timer",
+                          {},
+                          {{"endpoint", m_status.endpointLabel},
+                           {"interval_ms", QString::number(m_config.clashApi.modeSyncIntervalMs)}});
+    }
 }
 
 void ModeController::pollModeStatus() {
     if (m_status.busy) {
         return;
     }
-    refreshStatus();
+    refreshStatus(RefreshOrigin::BackgroundTimer);
 }
 
 void ModeController::handleHealthResult(const HealthCheckResult &result) {
@@ -221,7 +279,7 @@ void ModeController::handleModeSwitch(const ModeSwitchResult &result) {
                           {{"endpoint", m_status.endpointLabel}});
     }
     emit statusUpdated(m_status);
-    refreshStatus();
+    refreshStatus(RefreshOrigin::PostSwitchVerify);
 }
 
 QString ModeController::profileNameForModeValue(const QString &modeValue) const {

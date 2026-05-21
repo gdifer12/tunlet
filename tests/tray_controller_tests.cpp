@@ -126,12 +126,11 @@ TEST_CASE("TrayController shows mode and diagnostics in tooltip and native menu"
     REQUIRE_FALSE(directAction->isChecked());
 }
 
-TEST_CASE("TrayController starts and stops interactive refresh with tray menu session", "[tray]") {
+TEST_CASE("TrayController triggers one immediate refresh when the tray menu opens", "[tray]") {
     testApplication();
 
     tunlet::ui::TrayController controller;
     tunlet::config::TrayConfig trayConfig;
-    trayConfig.interactiveRefreshIntervalMs = 30;
     controller.setup(makeStatus(), makeProfiles(), makeDiagnostics(), trayConfig);
 
     QSignalSpy refreshSpy(&controller, &tunlet::ui::TrayController::refreshRequested);
@@ -142,139 +141,41 @@ TEST_CASE("TrayController starts and stops interactive refresh with tray menu se
     REQUIRE(menu != nullptr);
     QTRY_VERIFY(menu->isVisible());
     REQUIRE(refreshSpy.count() == 1);
-
-    controller.updateStatus(makeStatus());
-    controller.updateDiagnostics(makeDiagnostics());
-    REQUIRE(QMetaObject::invokeMethod(&controller, "emitMenuRefreshIfIdle", Qt::DirectConnection));
-    REQUIRE(refreshSpy.count() >= 2);
-
-    controller.updateStatus(makeStatus());
-    controller.updateDiagnostics(makeDiagnostics());
-
-    REQUIRE(QMetaObject::invokeMethod(&controller, "hideContextMenu", Qt::DirectConnection));
-    QTRY_VERIFY(!menu->isVisible());
-    const int countBeforeWait = refreshSpy.count();
-    QTest::qWait(80);
-    REQUIRE(refreshSpy.count() == countBeforeWait);
-
-    controller.updateStatus(makeStatus());
-    controller.updateDiagnostics(makeDiagnostics());
-    REQUIRE(QMetaObject::invokeMethod(&controller, "emitMenuRefreshIfIdle", Qt::DirectConnection));
-    REQUIRE(refreshSpy.count() == countBeforeWait);
 }
 
-TEST_CASE("TrayController interactive refresh does not depend on QMenu widget visibility", "[tray]") {
-    testApplication();
-
-    tunlet::ui::TrayController controller;
-    tunlet::config::TrayConfig trayConfig;
-    trayConfig.interactiveRefreshIntervalMs = 30;
-    controller.setup(makeStatus(), makeProfiles(), makeDiagnostics(), trayConfig);
-
-    QMenu *menu = trayMenuFor(controller);
-    REQUIRE(menu != nullptr);
-    REQUIRE_FALSE(menu->isVisible());
-
-    QSignalSpy refreshSpy(&controller, &tunlet::ui::TrayController::refreshRequested);
-    REQUIRE(refreshSpy.isValid());
-
-    REQUIRE(QMetaObject::invokeMethod(&controller, "handleMenuAboutToShow", Qt::DirectConnection));
-    REQUIRE(refreshSpy.count() == 1);
-
-    controller.updateStatus(makeStatus());
-    controller.updateDiagnostics(makeDiagnostics());
-    REQUIRE(QMetaObject::invokeMethod(&controller, "emitMenuRefreshIfIdle", Qt::DirectConnection));
-    REQUIRE(refreshSpy.count() >= 2);
-
-    controller.updateStatus(makeStatus());
-    controller.updateDiagnostics(makeDiagnostics());
-    REQUIRE(QMetaObject::invokeMethod(&controller, "handleMenuAboutToHide", Qt::DirectConnection));
-    const int countBeforeIdle = refreshSpy.count();
-    REQUIRE(QMetaObject::invokeMethod(&controller, "emitMenuRefreshIfIdle", Qt::DirectConnection));
-    REQUIRE(refreshSpy.count() == countBeforeIdle);
-}
-
-TEST_CASE("TrayController ends tray session heuristically when the menu closes without a hide callback", "[tray]") {
-    testApplication();
-
-    tunlet::ui::TrayController controller;
-    tunlet::config::TrayConfig trayConfig;
-    trayConfig.interactiveRefreshIntervalMs = 30;
-    controller.setup(makeStatus(), makeProfiles(), makeDiagnostics(), trayConfig);
-
-    QSignalSpy refreshSpy(&controller, &tunlet::ui::TrayController::refreshRequested);
-    REQUIRE(refreshSpy.isValid());
-
-    REQUIRE(QMetaObject::invokeMethod(&controller, "handleMenuAboutToShow", Qt::DirectConnection));
-    REQUIRE(refreshSpy.count() == 1);
-
-    QTest::qWait(1700);
-    controller.updateStatus(makeStatus());
-    controller.updateDiagnostics(makeDiagnostics());
-    const int countBeforeExpiry = refreshSpy.count();
-    REQUIRE(QMetaObject::invokeMethod(&controller, "emitMenuRefreshIfIdle", Qt::DirectConnection));
-    REQUIRE(refreshSpy.count() == countBeforeExpiry);
-}
-
-TEST_CASE("TrayController open and quit actions end the tray session immediately", "[tray]") {
+TEST_CASE("TrayController open and quit actions emit their signals", "[tray]") {
     testApplication();
 
     {
         tunlet::ui::TrayController controller;
         tunlet::config::TrayConfig trayConfig;
-        trayConfig.interactiveRefreshIntervalMs = 30;
         controller.setup(makeStatus(), makeProfiles(), makeDiagnostics(), trayConfig);
 
         QSignalSpy openSpy(&controller, &tunlet::ui::TrayController::openMainWindowRequested);
-        QSignalSpy refreshSpy(&controller, &tunlet::ui::TrayController::refreshRequested);
         REQUIRE(openSpy.isValid());
-        REQUIRE(refreshSpy.isValid());
-
-        REQUIRE(QMetaObject::invokeMethod(&controller, "handleMenuAboutToShow", Qt::DirectConnection));
-        controller.updateStatus(makeStatus());
-        controller.updateDiagnostics(makeDiagnostics());
 
         QMenu *menu = trayMenuFor(controller);
         REQUIRE(menu != nullptr);
         QAction *openAction = findAction(menu, "Open tunlet");
         REQUIRE(openAction != nullptr);
-        const int refreshCountBeforeOpen = refreshSpy.count();
         openAction->trigger();
         REQUIRE(openSpy.count() == 1);
-
-        controller.updateStatus(makeStatus());
-        controller.updateDiagnostics(makeDiagnostics());
-        REQUIRE(QMetaObject::invokeMethod(&controller, "emitMenuRefreshIfIdle", Qt::DirectConnection));
-        REQUIRE(refreshSpy.count() == refreshCountBeforeOpen);
     }
 
     {
         tunlet::ui::TrayController controller;
         tunlet::config::TrayConfig trayConfig;
-        trayConfig.interactiveRefreshIntervalMs = 30;
         controller.setup(makeStatus(), makeProfiles(), makeDiagnostics(), trayConfig);
 
         QSignalSpy quitSpy(&controller, &tunlet::ui::TrayController::quitRequested);
-        QSignalSpy refreshSpy(&controller, &tunlet::ui::TrayController::refreshRequested);
         REQUIRE(quitSpy.isValid());
-        REQUIRE(refreshSpy.isValid());
-
-        REQUIRE(QMetaObject::invokeMethod(&controller, "handleMenuAboutToShow", Qt::DirectConnection));
-        controller.updateStatus(makeStatus());
-        controller.updateDiagnostics(makeDiagnostics());
 
         QMenu *menu = trayMenuFor(controller);
         REQUIRE(menu != nullptr);
         QAction *quitAction = findAction(menu, "Quit");
         REQUIRE(quitAction != nullptr);
-        const int refreshCountBeforeQuit = refreshSpy.count();
         quitAction->trigger();
         REQUIRE(quitSpy.count() == 1);
-
-        controller.updateStatus(makeStatus());
-        controller.updateDiagnostics(makeDiagnostics());
-        REQUIRE(QMetaObject::invokeMethod(&controller, "emitMenuRefreshIfIdle", Qt::DirectConnection));
-        REQUIRE(refreshSpy.count() == refreshCountBeforeQuit);
     }
 }
 
@@ -316,26 +217,21 @@ TEST_CASE("TrayController keeps stable values during in-flight refresh and does 
     QTRY_VERIFY(!menu->isVisible());
 }
 
-TEST_CASE("TrayController reopens native menu after refresh action", "[tray]") {
+TEST_CASE("TrayController refresh action emits a manual refresh request", "[tray]") {
     testApplication();
 
     tunlet::ui::TrayController controller;
     tunlet::config::TrayConfig trayConfig;
     controller.setup(makeStatus(), makeProfiles(), makeDiagnostics(), trayConfig);
 
-    REQUIRE(QMetaObject::invokeMethod(&controller, "showContextMenu", Qt::DirectConnection));
+    QSignalSpy refreshSpy(&controller, &tunlet::ui::TrayController::refreshRequested);
+    REQUIRE(refreshSpy.isValid());
+
     QMenu *menu = trayMenuFor(controller);
     REQUIRE(menu != nullptr);
-    QTRY_VERIFY(menu->isVisible());
-
-    controller.updateStatus(makeStatus());
-    controller.updateDiagnostics(makeDiagnostics());
 
     QAction *refreshAction = findAction(menu, "Refresh");
     REQUIRE(refreshAction != nullptr);
     refreshAction->trigger();
-    menu->hide();
-    QTRY_VERIFY(menu->isVisible());
-
-    REQUIRE(QMetaObject::invokeMethod(&controller, "hideContextMenu", Qt::DirectConnection));
+    REQUIRE(refreshSpy.count() == 1);
 }

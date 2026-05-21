@@ -111,7 +111,6 @@ This avoids hardcoding the complete list of supported mode values in the UI.
 
 - `keepRunningWithoutWindow`: when `true`, closing the main window hides it to tray instead of exiting
 - `startHidden`: when `true`, and a tray host is available, tunlet starts without showing the main window
-- `interactiveRefreshIntervalMs`: while a native tray menu session is considered active, tunlet reruns the combined runtime refresh at this faster cadence
 
 `theme` controls the generated application theme:
 
@@ -151,9 +150,9 @@ If `logging.rotation.enabled` is `true`, both `rotation.maxFileBytes` and `rotat
 - `Refresh runtime` tracks a combined diagnostics result: `Last reload` means the last successful IP/timing/DNS refresh, failed refreshes clear delay values and mark the remaining diagnostics values stale instead of pretending new data arrived.
 - The tray tooltip shows mode, API reachability, IP, and delay from the latest known snapshot.
 - Right-click opens a native tray menu built from standard actions and separators rather than redundant section-label rows.
-- Opening the tray menu triggers an immediate runtime refresh and then uses `tray.interactiveRefreshIntervalMs` only while that native tray-menu session is active; outside that session, idle diagnostics cadence still comes only from `diagnostics.refreshIntervalMs`.
-- On native tray hosts, closure detection is best-effort: tunlet uses Qt menu callbacks when they arrive and an internal fallback timeout when they do not.
-- `Refresh` and mode changes use best-effort menu reopening after the action; some tray hosts may still close the menu because native menu persistence is platform-dependent.
+- Opening the tray menu triggers one immediate runtime refresh; after that, automatic diagnostics refresh still comes only from `diagnostics.refreshIntervalMs`.
+- Tray `Refresh` stays a manual one-shot action.
+- Diagnostics logging records the actual runtime refresh cycle, including startup refresh, periodic refresh, tray refresh, config-apply refresh, and the final success or failure result for each cycle.
 - Additional profiles are listed and can be switched from the main window or tray menu.
 - The UI also shows the `mode-list` reported by `/configs`, so you can see which backend modes are actually available.
 - Logging supports text and JSONL sinks simultaneously, applies sink/path/level/rotation changes live, and can stay append-only when rotation is disabled.

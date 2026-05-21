@@ -71,6 +71,8 @@ public:
 
     void start();
     void refreshNow();
+    void refreshFromTray();
+    void refreshFromConfigApply();
     void refreshLocationDataNow();
     void updateConfig(const config::AppConfig &config);
     void observeModeStatus(const tunlet::clash::ModeStatus &status);
@@ -82,6 +84,9 @@ signals:
 private:
     enum class RefreshOrigin {
         RuntimeReread,
+        TrayInteractive,
+        ConfigApply,
+        PeriodicTimer,
         StartupBootstrap,
         ModeChangeBootstrap,
     };
@@ -95,6 +100,7 @@ private:
     struct RuntimeRefreshProgress {
         quint64 generation = 0;
         bool active = false;
+        RefreshOrigin origin = RefreshOrigin::RuntimeReread;
         bool publicIpDone = false;
         bool delayDone = false;
         bool dnsDone = false;
@@ -111,7 +117,9 @@ private:
     void updateConfigurationSnapshot();
     void resetConnectionSnapshot(const QString &reason);
     void abortProbe(QPointer<QProcess> &process);
-    void markRuntimeRefreshStarted(quint64 generation);
+    QString refreshOriginName(RefreshOrigin origin) const;
+    void refreshFromPeriodicTimer();
+    void markRuntimeRefreshStarted(quint64 generation, RefreshOrigin origin);
     void noteRuntimeProbeResult(quint64 generation, RuntimeProbeKind kind, bool ok, const QString &failureDetail = {});
     void finalizeRuntimeRefreshIfComplete(quint64 generation);
     void refreshNow(RefreshOrigin origin);

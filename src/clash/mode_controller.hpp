@@ -36,6 +36,9 @@ public:
                    QObject *parent = nullptr);
 
     void refreshStatus();
+    void refreshStatusFromTray();
+    void refreshStatusFromConfigApply();
+    void refreshStatusForStartup();
     void switchMode(const QString &profileName);
     void updateConfig(const config::AppConfig &config);
 
@@ -48,6 +51,17 @@ signals:
     void operationFailed(const QString &message);
 
 private:
+    enum class RefreshOrigin {
+        ManualUi,
+        Tray,
+        ConfigApply,
+        Startup,
+        BackgroundTimer,
+        PostSwitchVerify,
+    };
+
+    QString refreshOriginName(RefreshOrigin origin) const;
+    void refreshStatus(RefreshOrigin origin);
     void configureModeSyncTimer();
     void pollModeStatus();
     void handleHealthResult(const HealthCheckResult &result);
