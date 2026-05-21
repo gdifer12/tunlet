@@ -57,6 +57,7 @@ void ModeController::switchMode(const QString &profileName) {
     }
 
     m_status.busy = true;
+    m_status.switchInFlight = true;
     m_status.detail = QString("Switching to %1...").arg(profile->name);
     m_pendingProfileName = profile->name;
     m_pendingModeValue = profile->mode;
@@ -72,6 +73,7 @@ void ModeController::updateConfig(const config::AppConfig &config) {
     if (!findProfile(m_pendingProfileName)) {
         m_pendingProfileName.clear();
         m_pendingModeValue.clear();
+        m_status.switchInFlight = false;
     }
     emit profilesUpdated(m_config.clashApi.profiles);
     emit statusUpdated(m_status);
@@ -123,6 +125,7 @@ void ModeController::handleModeState(const ModeStateResult &result) {
     const QString pendingProfileName = m_pendingProfileName;
 
     m_status.busy = false;
+    m_status.switchInFlight = false;
     m_status.lastUpdated = QDateTime::currentDateTime();
     if (!result.ok) {
         m_status.detail = result.detail;
@@ -195,6 +198,7 @@ void ModeController::handleModeSwitch(const ModeSwitchResult &result) {
     m_status.busy = false;
     m_status.lastUpdated = QDateTime::currentDateTime();
     if (!result.ok) {
+        m_status.switchInFlight = false;
         m_status.detail = result.detail;
         m_pendingProfileName.clear();
         m_pendingModeValue.clear();

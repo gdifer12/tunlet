@@ -68,6 +68,7 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "tray:\n"
         << "  keepRunningWithoutWindow: false\n"
         << "  startHidden: true\n"
+        << "  interactiveRefreshIntervalMs: 7000\n"
         << "logging:\n"
         << "  enabled: true\n"
         << "  level: warning\n"
@@ -136,6 +137,7 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     REQUIRE(config.theme.qssPath == "/tmp/tunlet-root/themes/overlay.qss");
     REQUIRE(config.tray.keepRunningWithoutWindow == false);
     REQUIRE(config.tray.startHidden == true);
+    REQUIRE(config.tray.interactiveRefreshIntervalMs == 7000);
     REQUIRE(config.logging.enabled == true);
     REQUIRE(config.logging.level == tunlet::config::LoggingLevel::Warning);
     REQUIRE(config.logging.textPath == "/tmp/tunlet-root/logs/tunlet.log");
@@ -193,6 +195,7 @@ TEST_CASE("ConfigLoader derives default GeoIP paths from config directory", "[co
     REQUIRE(config.diagnostics.connection.location.dynamicCache.cachePath == dir.path() + "/geoip-cache.json");
     REQUIRE(config.tray.keepRunningWithoutWindow == true);
     REQUIRE(config.tray.startHidden == false);
+    REQUIRE(config.tray.interactiveRefreshIntervalMs == 5000);
     REQUIRE(config.theme.themePath.isEmpty());
     REQUIRE(config.theme.templatePath.isEmpty());
     REQUIRE(config.theme.qssPath.isEmpty());
@@ -322,6 +325,22 @@ TEST_CASE("ConfigLoader rejects legacy externalIp diagnostics schema", "[config]
     file.close();
 
     REQUIRE_THROWS(tunlet::config::ConfigLoader::loadFromPath(configPath));
+}
+
+TEST_CASE("ConfigLoader rejects non-positive tray interactive refresh interval", "[config]") {
+    const QString config = QString()
+        + "clashApi:\n"
+        + "  host: 127.0.0.1\n"
+        + "  port: 9090\n"
+        + "ruleSets:\n"
+        + "  forceProxyPath: /tmp/force-proxy.json\n"
+        + "  forceDirectPath: /tmp/force-direct.json\n"
+        + "  autoProxyPath: /tmp/auto-proxy.json\n"
+        + "  autoDirectPath: /tmp/auto-direct.json\n"
+        + "tray:\n"
+        + "  interactiveRefreshIntervalMs: 0\n";
+
+    REQUIRE_THROWS(tunlet::config::ConfigLoader::loadFromData(config, "/tmp/tunlet/config.yaml"));
 }
 
 TEST_CASE("ConfigLoader rejects unsupported logging level", "[config]") {

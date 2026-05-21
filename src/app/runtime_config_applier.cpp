@@ -40,6 +40,7 @@ RuntimeConfigApplyResult RuntimeConfigApplier::apply(const config::AppConfig &co
     if (m_application && m_trayController) {
         const bool keepRunningInTray = m_trayController->isTrayAvailable() && config.tray.keepRunningWithoutWindow;
         m_application->setQuitOnLastWindowClosed(!keepRunningInTray);
+        m_trayController->updateConfig(config.tray);
     }
 
     QString qssError;

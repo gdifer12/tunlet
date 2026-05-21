@@ -21,6 +21,7 @@ struct ModeStatus {
     QStringList supportedModes;
     bool reachable = false;
     bool busy = false;
+    bool switchInFlight = false;
     QString detail;
     QDateTime lastUpdated;
 };

@@ -89,7 +89,7 @@ int main(int argc, char *argv[]) {
 
     app.setQuitOnLastWindowClosed(!keepRunningInTray);
 
-    trayController.setup(modeController.status(), modeController.profiles());
+    trayController.setup(modeController.status(), modeController.profiles(), diagnosticsService.snapshot(), config.tray);
     QObject::connect(&trayController, &tunlet::ui::TrayController::openMainWindowRequested, &mainWindow, &tunlet::ui::MainWindow::showAndRaise);
     QObject::connect(&trayController, &tunlet::ui::TrayController::refreshRequested, &modeController, &tunlet::clash::ModeController::refreshStatus);
     QObject::connect(&trayController,
@@ -101,6 +101,10 @@ int main(int argc, char *argv[]) {
     QObject::connect(&modeController, &tunlet::clash::ModeController::statusUpdated, &trayController, &tunlet::ui::TrayController::updateStatus);
     QObject::connect(&modeController, &tunlet::clash::ModeController::statusUpdated, &diagnosticsService, &tunlet::diagnostics::DiagnosticsService::observeModeStatus);
     QObject::connect(&modeController, &tunlet::clash::ModeController::profilesUpdated, &trayController, &tunlet::ui::TrayController::updateProfiles);
+    QObject::connect(&diagnosticsService,
+                     &tunlet::diagnostics::DiagnosticsService::diagnosticsUpdated,
+                     &trayController,
+                     &tunlet::ui::TrayController::updateDiagnostics);
 
     trayController.show();
     if (!startHiddenInTray) {

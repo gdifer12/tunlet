@@ -80,6 +80,7 @@ if(BUILD_TESTING)
         tests/mode_selection_state_tests.cpp
         tests/ruleset_service_tests.cpp
         tests/theme_loader_tests.cpp
+        tests/tray_controller_tests.cpp
     )
     target_link_libraries(
         tunlet_tests

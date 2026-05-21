@@ -514,6 +514,11 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
         }
         config.tray.keepRunningWithoutWindow = readBool(tray, "keepRunningWithoutWindow", true);
         config.tray.startHidden = readBool(tray, "startHidden", false);
+        config.tray.interactiveRefreshIntervalMs =
+            readInt(tray, "interactiveRefreshIntervalMs", config.tray.interactiveRefreshIntervalMs);
+        if (config.tray.interactiveRefreshIntervalMs <= 0) {
+            throw std::runtime_error("tray.interactiveRefreshIntervalMs must be > 0");
+        }
     }
 
     if (const YAML::Node logging = root["logging"]) {
