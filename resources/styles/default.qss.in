@@ -1,0 +1,503 @@
+QWidget {
+    background: transparent;
+    color: {{color.text.primary}};
+    font-family: {{font.family.ui}};
+    font-size: {{font.size.body}}px;
+}
+
+QLabel {
+    background: transparent;
+}
+
+QMainWindow,
+QWidget#appRoot {
+    background: transparent;
+}
+
+QWidget#windowFrame {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+
+QWidget#windowTitleBar {
+    background: {{color.bg.titleBar}};
+    border-bottom: 1px solid {{color.border.titleBar}};
+    border-top-left-radius: {{radius.window}}px;
+    border-top-right-radius: {{radius.window}}px;
+}
+
+QWidget#windowBody {
+    border-bottom-left-radius: {{radius.window}}px;
+    border-bottom-right-radius: {{radius.window}}px;
+}
+
+QWidget#contentShell,
+QStackedWidget#contentPages,
+QWidget#panelPage,
+QScrollArea#dashboardPageScrollArea,
+QScrollArea#rulesPageScrollArea,
+QScrollArea#settingsPageScrollArea {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 {{color.bg.shell.start}},
+                                stop: 1 {{color.bg.shell.end}});
+}
+
+QWidget#topRuntimeStrip {
+    background: {{color.bg.shell.start}};
+    border-bottom: 1px solid {{color.border.titleBar}};
+}
+
+QWidget#topRuntime,
+QWidget#card,
+QWidget#healthItem,
+QWidget#metricItem,
+QWidget#editorBanner,
+QWidget#editorFrame,
+QWidget#fileMetaCard,
+QWidget#summaryItem {
+    background: {{color.bg.surface}};
+    border: 1px solid {{color.border.surface}};
+    border-radius: {{radius.panel}}px;
+}
+
+QWidget#topRuntime {
+    background: {{color.bg.runtimeOverlay}};
+}
+
+QWidget#healthItem,
+QWidget#metricItem,
+QWidget#summaryItem,
+QWidget#fileMetaCard {
+    background: {{color.bg.surfaceSoft}};
+}
+
+QWidget#bottomNav,
+QWidget#bottomStatusLine,
+QWidget#healthStrip {
+    background: {{color.bg.footer}};
+}
+
+QWidget#healthStrip {
+    border-top: 1px solid {{color.border.footer}};
+}
+
+QWidget#bottomNav {
+    border-top: 1px solid {{color.border.footer}};
+}
+
+QWidget#bottomStatusLine {
+    border-top: 1px solid {{color.border.statusLine}};
+    border-bottom-left-radius: {{radius.window}}px;
+    border-bottom-right-radius: {{radius.window}}px;
+}
+
+QLabel#titleBarTitle,
+QLabel#panelTitle,
+QLabel#cardTitleStrong,
+QLabel#runtimeTitle,
+QLabel#summaryValue,
+QLabel#healthValue,
+QLabel#selectorTriggerValue,
+QLabel#selectorOptionTitle,
+QLabel#recentActionValue {
+    color: {{color.text.strong}};
+}
+
+QLabel#titleBarTitle {
+    font-size: {{font.size.medium}}px;
+    font-weight: 600;
+}
+
+QLabel#panelTitle {
+    font-size: {{font.size.panelTitle}}px;
+    font-weight: 700;
+}
+
+QLabel#cardTitleStrong {
+    font-size: {{font.size.cardTitle}}px;
+    font-weight: 600;
+}
+
+QLabel#runtimeTitle {
+    font-size: {{font.size.medium}}px;
+    font-weight: 600;
+}
+
+QLabel#runtimeSummary,
+QLabel#panelSubtitle,
+QLabel#cardSubtitle,
+QLabel#summarySub,
+QLabel#monoNote,
+QLabel#bannerMessage,
+QLabel#kvValue,
+QLabel#metricValue,
+QLabel#metricValueCompact,
+QLabel#selectorTriggerSub,
+QLabel#selectorOptionSub,
+QLabel#selectorOptionMeta {
+    color: {{color.text.secondary}};
+}
+
+QLabel#runtimeSummary,
+QLabel#selectorOptionMeta,
+QLabel#recentActionValue {
+    font-size: {{font.size.small}}px;
+}
+
+QLabel#eyebrow,
+QLabel#summaryKey,
+QLabel#metricLabel,
+QLabel#metaLabel,
+QLabel#kvKey {
+    color: {{color.text.muted}};
+    font-size: {{font.size.label}}px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+QLabel#healthInlineBadge {
+    color: {{color.text.badge}};
+    font-size: {{font.size.label}}px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+QLabel#monoNote,
+QLabel#metaLabel,
+QLabel#kvValue,
+QLabel#lineNumbers,
+QLabel#selectorOptionMeta,
+QLabel#ruleFileTriggerPathLabel {
+    font-family: {{font.family.mono}};
+}
+
+QLabel#summaryValue {
+    font-size: {{font.size.summary}}px;
+    font-weight: 600;
+}
+
+QLabel#metricValueLead {
+    color: {{color.text.lead}};
+    font-size: {{font.size.medium}}px;
+    font-weight: 600;
+}
+
+QLabel#metricValueCompact {
+    color: {{color.text.compact}};
+    font-size: {{font.size.compact}}px;
+    font-weight: 600;
+}
+
+QLabel#selectorTriggerValue {
+    font-size: {{font.size.selector}}px;
+    font-weight: 600;
+}
+
+QLabel#selectorTriggerCaret {
+    color: {{color.text.tertiary}};
+    font-size: {{font.size.selector}}px;
+    font-weight: 600;
+}
+
+QLabel#recentActionValue {
+    color: {{color.text.recent}};
+    font-weight: 500;
+    font-size: {{font.size.small}}px;
+}
+
+QPushButton,
+QToolButton {
+    background: {{color.bg.button}};
+    color: {{color.text.button}};
+    border: 1px solid {{color.border.button}};
+    border-radius: {{radius.button}}px;
+    padding: 10px 14px;
+    font-weight: 600;
+}
+
+QPushButton:hover,
+QToolButton:hover {
+    background: {{color.bg.buttonHover}};
+    border-color: {{color.border.buttonHover}};
+}
+
+QPushButton:pressed,
+QToolButton:pressed {
+    background: {{color.bg.surfaceSoft}};
+}
+
+QPushButton#primaryButton {
+    background: {{color.accent.buttonBg}};
+    border: 1px solid {{color.accent.buttonBorder}};
+    color: {{color.text.inverse}};
+}
+
+QPushButton#primaryButton:hover {
+    background: {{color.accent.buttonHoverBg}};
+}
+
+QPushButton#ghostButton {
+    background: {{color.bg.surfaceSoft}};
+}
+
+QPushButton#ghostButton:disabled,
+QToolButton#ghostButton:disabled {
+    color: {{color.text.disabled}};
+    background: {{color.bg.disabled}};
+    border-color: {{color.border.disabled}};
+}
+
+QPushButton#ghostButton:disabled:hover,
+QToolButton#ghostButton:disabled:hover {
+    color: {{color.text.disabled}};
+    background: {{color.bg.disabled}};
+    border-color: {{color.border.disabled}};
+}
+
+QToolTip {
+    background: {{color.bg.surface}};
+    color: {{color.text.primary}};
+    border: 1px solid {{color.border.subtle}};
+    border-radius: {{radius.input}}px;
+    padding: 6px 8px;
+}
+
+QToolButton#navTabButton {
+    min-height: 40px;
+    padding: 5px 10px 5px 10px;
+    border-radius: {{radius.control}}px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: {{color.text.nav}};
+    font-size: {{font.size.body}}px;
+    font-weight: 600;
+}
+
+QToolButton#navTabButton:hover {
+    background: {{color.bg.hover}};
+    border-color: {{color.border.subtle}};
+}
+
+QToolButton#navTabButton[active="true"] {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 {{color.accent.navGradientStart}},
+                                stop: 1 {{color.bg.button}});
+    border-color: {{color.accent.navBorder}};
+    color: {{color.text.inverse}};
+}
+
+QPushButton#selectorTrigger {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 {{color.bg.selectorGradientStart}},
+                                stop: 1 {{color.bg.surfaceSoft}});
+    border: 1px solid {{color.border.selector}};
+    border-radius: {{radius.panel}}px;
+    padding: 0;
+    text-align: left;
+}
+
+QPushButton#selectorTrigger:hover {
+    border-color: {{color.border.selectorHover}};
+}
+
+QPushButton#selectorTrigger[open="true"] {
+    border-color: {{color.accent.selectorOpenBorder}};
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 {{color.accent.selectorOpenGradientStart}},
+                                stop: 1 {{color.bg.surfaceSoft}});
+}
+
+QFrame#selectorPopup {
+    background: {{color.bg.popup}};
+    border: 1px solid {{color.border.popup}};
+    border-radius: {{radius.panel}}px;
+}
+
+QPushButton#selectorOption {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: {{radius.control}}px;
+    padding: 0;
+    text-align: left;
+}
+
+QPushButton#selectorOption:hover,
+QPushButton#selectorOption:focus {
+    background: {{color.bg.hover}};
+    border-color: {{color.border.optionHover}};
+}
+
+QPushButton#selectorOption[active="true"] {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 {{color.accent.optionActiveGradientStart}},
+                                stop: 1 {{color.bg.button}});
+    border-color: {{color.accent.optionActiveBorder}};
+}
+
+QLabel#statusPill,
+QLabel#metaChip {
+    border-radius: {{radius.pill}}px;
+    padding: 5px 10px;
+    font-size: {{font.size.label}}px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+QLabel#metaChip {
+    background: {{color.bg.hover}};
+    border: 1px solid {{color.border.chip}};
+    color: {{color.text.chip}};
+}
+
+QLabel#statusPill[tone="ok"] {
+    background: {{color.state.success.bg}};
+    border: 1px solid {{color.state.success.border}};
+    color: {{color.state.success.text}};
+}
+
+QLabel#statusPill[tone="warn"] {
+    background: {{color.state.warning.bg}};
+    border: 1px solid {{color.state.warning.border}};
+    color: {{color.state.warning.text}};
+}
+
+QLabel#statusPill[tone="danger"] {
+    background: {{color.state.error.bg}};
+    border: 1px solid {{color.state.error.border}};
+    color: {{color.state.error.text}};
+}
+
+QLabel#statusPill[tone="neutral"],
+QLabel#statusPill {
+    background: {{color.bg.hover}};
+    border: 1px solid {{color.border.popup}};
+    color: {{color.state.neutral.text}};
+}
+
+QWidget#editorBanner[tone="ok"] {
+    background: {{color.state.success.bannerBg}};
+    border: 1px solid {{color.state.success.bannerBorder}};
+}
+
+QWidget#editorBanner[tone="warn"] {
+    background: {{color.state.warning.bannerBg}};
+    border: 1px solid {{color.state.warning.bannerBorder}};
+}
+
+QWidget#editorBanner[tone="danger"] {
+    background: {{color.state.error.bannerBg}};
+    border: 1px solid {{color.state.error.bannerBorder}};
+}
+
+QWidget#editorBanner[tone="neutral"],
+QWidget#editorBanner {
+    background: {{color.bg.surfaceSoft}};
+    border: 1px solid {{color.border.surface}};
+}
+
+QLabel#bannerTitle {
+    color: {{color.text.strong}};
+    font-size: {{font.size.body}}px;
+    font-weight: 600;
+}
+
+QPlainTextEdit {
+    background: {{color.bg.editor}};
+    color: {{color.text.button}};
+    border: 1px solid {{color.border.editor}};
+    border-radius: {{radius.panel}}px;
+}
+
+QPlainTextEdit:hover {
+    border-color: {{color.border.editorHover}};
+}
+
+QLabel#lineNumbers {
+    min-width: 42px;
+    padding: 16px 10px 16px 12px;
+    background: {{color.bg.lineNumbers}};
+    color: {{color.text.lineNumbers}};
+    border-right: 1px solid {{color.border.lineNumbers}};
+}
+
+QPlainTextEdit#ruleEditor,
+QPlainTextEdit#settingsEditor {
+    border-radius: 0;
+    border: none;
+    padding: 16px 18px;
+    selection-background-color: {{color.selection.bg}};
+    font-family: {{font.family.mono}};
+    font-size: {{font.size.compact}}px;
+}
+
+QPlainTextEdit#settingsEditor {
+    border: 1px solid {{color.border.editor}};
+    border-radius: {{radius.panel}}px;
+    min-height: 420px;
+}
+
+QLabel#kvValue {
+    font-size: {{font.size.compact}}px;
+}
+
+QScrollArea {
+    background: transparent;
+    border: none;
+}
+
+QWidget#pageViewport {
+    background: transparent;
+}
+
+QLabel#healthValue {
+    font-size: {{font.size.small}}px;
+    font-weight: 600;
+}
+
+QStatusBar {
+    background: transparent;
+    border: none;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 12px;
+    margin: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background: {{color.bg.scrollbar}};
+    border-radius: {{radius.scrollbar}}px;
+    min-height: 28px;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+    border: none;
+}
+
+QPlainTextEdit QScrollBar:horizontal {
+    background: transparent;
+    height: 12px;
+    margin: 4px;
+}
+
+QPlainTextEdit QScrollBar::handle:horizontal {
+    background: {{color.bg.scrollbar}};
+    border-radius: {{radius.scrollbar}}px;
+    min-width: 28px;
+}
+
+QPlainTextEdit QScrollBar::add-line:horizontal,
+QPlainTextEdit QScrollBar::sub-line:horizontal,
+QPlainTextEdit QScrollBar::add-page:horizontal,
+QPlainTextEdit QScrollBar::sub-page:horizontal {
+    background: transparent;
+    border: none;
+}

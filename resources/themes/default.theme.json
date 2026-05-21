@@ -1,0 +1,125 @@
+{
+  "font": {
+    "family": {
+      "ui": "\"Inter\", \"Noto Sans\", \"Segoe UI\", sans-serif",
+      "mono": "\"JetBrains Mono\", \"Fira Code\", monospace"
+    },
+    "size": {
+      "body": 14,
+      "medium": 15,
+      "cardTitle": 17,
+      "panelTitle": 22,
+      "selector": 18,
+      "summary": 20,
+      "compact": 13,
+      "small": 12,
+      "label": 11
+    }
+  },
+  "radius": {
+    "window": 24,
+    "panel": 16,
+    "control": 14,
+    "button": 12,
+    "input": 8,
+    "scrollbar": 6,
+    "pill": 999
+  },
+  "color": {
+    "bg": {
+      "titleBar": "#151a21",
+      "runtimeOverlay": "rgba(255, 255, 255, 0.035)",
+      "surface": "#20262f",
+      "surfaceSoft": "rgba(255, 255, 255, 0.03)",
+      "footer": "#171d24",
+      "button": "rgba(255, 255, 255, 0.04)",
+      "buttonHover": "rgba(255, 255, 255, 0.07)",
+      "disabled": "rgba(255, 255, 255, 0.018)",
+      "hover": "rgba(255, 255, 255, 0.05)",
+      "popup": "#1c222b",
+      "editor": "#171d25",
+      "lineNumbers": "#141920",
+      "selectorGradientStart": "rgba(255, 255, 255, 0.055)",
+      "scrollbar": "#3a475b",
+      "shell": {
+        "start": "#161b22",
+        "end": "#1b2028"
+      }
+    },
+    "text": {
+      "primary": "#eef3f9",
+      "strong": "#f7fbff",
+      "secondary": "#a3adba",
+      "muted": "#7f8a98",
+      "badge": "#9fb8dc",
+      "lead": "#e4ebf4",
+      "compact": "#c9d2dc",
+      "tertiary": "#8e99a8",
+      "recent": "#c8d2dc",
+      "button": "#eef4fb",
+      "inverse": "#ffffff",
+      "disabled": "#6f7c8c",
+      "nav": "#aab5c2",
+      "chip": "#9eabba",
+      "lineNumbers": "#697687"
+    },
+    "border": {
+      "titleBar": "#27303a",
+      "surface": "#313a46",
+      "footer": "#2b343f",
+      "statusLine": "#242c36",
+      "button": "#334051",
+      "buttonHover": "#44546a",
+      "disabled": "#2f3844",
+      "subtle": "#36414f",
+      "selector": "#35404d",
+      "selectorHover": "#475566",
+      "popup": "#334050",
+      "optionHover": "#3a4657",
+      "chip": "#303b48",
+      "editor": "#344152",
+      "editorHover": "#44556e",
+      "lineNumbers": "#2a3340"
+    },
+    "accent": {
+      "buttonBg": "rgba(47, 111, 235, 0.2)",
+      "buttonBorder": "rgba(93, 149, 255, 0.68)",
+      "buttonHoverBg": "rgba(47, 111, 235, 0.28)",
+      "navGradientStart": "rgba(47, 111, 235, 0.22)",
+      "navBorder": "rgba(93, 149, 255, 0.7)",
+      "selectorOpenBorder": "rgba(93, 149, 255, 0.72)",
+      "selectorOpenGradientStart": "rgba(47, 111, 235, 0.14)",
+      "optionActiveGradientStart": "rgba(47, 111, 235, 0.18)",
+      "optionActiveBorder": "rgba(93, 149, 255, 0.66)"
+    },
+    "selection": {
+      "bg": "rgba(47, 111, 235, 0.38)"
+    },
+    "state": {
+      "neutral": {
+        "text": "#c5d2df"
+      },
+      "success": {
+        "bg": "rgba(23, 163, 74, 0.16)",
+        "border": "rgba(53, 183, 97, 0.4)",
+        "text": "#71e09b",
+        "bannerBg": "rgba(23, 163, 74, 0.12)",
+        "bannerBorder": "rgba(53, 183, 97, 0.3)"
+      },
+      "warning": {
+        "bg": "rgba(234, 179, 8, 0.16)",
+        "border": "rgba(234, 179, 8, 0.36)",
+        "text": "#f2cd67",
+        "bannerBg": "rgba(234, 179, 8, 0.12)",
+        "bannerBorder": "rgba(234, 179, 8, 0.28)"
+      },
+      "error": {
+        "bg": "rgba(220, 38, 38, 0.16)",
+        "border": "rgba(220, 38, 38, 0.38)",
+        "text": "#ff8c8c",
+        "bannerBg": "rgba(220, 38, 38, 0.12)",
+        "bannerBorder": "rgba(220, 38, 38, 0.3)"
+      }
+    }
+  }
+}

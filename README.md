@@ -14,7 +14,7 @@ It is intentionally not a VPN manager, service manager, config generator, or net
 - JSON validation and safe-save with optional backups
 - Optional command-driven connection diagnostics for IP, delay, DNS, and GeoLite2 location
 - Optional dual-sink file logging with human-readable text, JSON Lines output, and size-based rotation
-- Optional custom QSS theme file
+- Built-in generated QSS theme with optional token, template, and raw-QSS overrides
 - Nix flake with `devShell` and package build
 
 ## Build and run
@@ -42,7 +42,7 @@ If you are using a separate container-level devshell such as `/state/agent-env`,
 
 - On Wayland/Hyprland, tray availability depends on a StatusNotifier-compatible host such as the Waybar tray module.
 - If no tray host is available, the main window still works.
-- The app follows the system theme by default and can optionally load a custom QSS file.
+- The app uses a built-in generated QSS theme and can optionally load external token, template, or raw-QSS overrides.
 
 ## Configuration
 
@@ -112,6 +112,14 @@ This avoids hardcoding the complete list of supported mode values in the UI.
 - `keepRunningWithoutWindow`: when `true`, closing the main window hides it to tray instead of exiting
 - `startHidden`: when `true`, and a tray host is available, tunlet starts without showing the main window
 
+`theme` controls the generated application theme:
+
+- `themePath`: optional `custom.theme.json` override; deep-merges over the built-in theme tokens
+- `templatePath`: optional `custom.qss.in` override; replaces the built-in QSS template used for rendering
+- `qssPath`: optional plain QSS overlay appended after the rendered generated theme
+
+All theme paths are optional and resolve through `configRoute` when relative. `Save and apply` and `Reload` re-read theme tokens, template overrides, and raw QSS overlays without restart. If a raw `qssPath` overlay fails to load, tunlet still applies the rendered generated theme and reports a warning. If token loading or template rendering fails, tunlet keeps the previously active stylesheet instead of applying a broken theme.
+
 `logging` controls optional file logging:
 
 - `enabled`: enables or disables file logging entirely
@@ -158,8 +166,10 @@ If `logging.rotation.enabled` is `true`, both `rotation.maxFileBytes` and `rotat
 - `src/config/config_file_service.*`: UI-safe YAML config editing
 - `src/diagnostics`: periodic health plus command-driven connection probes
 - `src/ui`: Qt Widgets main window and tray
-- `src/theme`: optional QSS loading
+- `src/theme`: built-in theme token/template loading and external theme overrides
 - `tests`: unit tests
+
+Theme editing details are documented in [docs/theme.md](/work/tunlet/docs/theme.md).
 
 ## Known assumptions
 

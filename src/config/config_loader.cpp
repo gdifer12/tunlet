@@ -477,6 +477,21 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
     }
 
     if (const YAML::Node theme = root["theme"]) {
+        if (!theme.IsMap()) {
+            throw std::runtime_error("theme must be a map");
+        }
+        config.theme.themePath =
+            theme["themePath"]
+                ? tunlet::app::resolveConfiguredPath(QString::fromStdString(theme["themePath"].as<std::string>()),
+                                                     config.configRoute,
+                                                     fallbackBasePath)
+                : QString{};
+        config.theme.templatePath =
+            theme["templatePath"]
+                ? tunlet::app::resolveConfiguredPath(QString::fromStdString(theme["templatePath"].as<std::string>()),
+                                                     config.configRoute,
+                                                     fallbackBasePath)
+                : QString{};
         config.theme.qssPath =
             theme["qssPath"]
                 ? tunlet::app::resolveConfiguredPath(QString::fromStdString(theme["qssPath"].as<std::string>()),

@@ -44,14 +44,16 @@ RuntimeConfigApplyResult RuntimeConfigApplier::apply(const config::AppConfig &co
 
     QString qssError;
     if (m_application &&
-        !theme::ThemeLoader::applyOptionalStylesheet(*m_application, config.theme.qssPath, &qssError) &&
+        !theme::ThemeLoader::applyTheme(*m_application, config.theme, &qssError) &&
         !qssError.isEmpty()) {
         result.warning = qssError;
         if (m_loggingService) {
             m_loggingService->logWarning("config.apply",
                                          "Runtime config applied with theme warning",
                                          qssError,
-                                         {{"theme_path", config.theme.qssPath}});
+                                         {{"theme_path", config.theme.themePath},
+                                          {"template_path", config.theme.templatePath},
+                                          {"qss_path", config.theme.qssPath}});
         }
     }
 

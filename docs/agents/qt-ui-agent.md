@@ -29,6 +29,7 @@ Owns Qt UI, tray behavior, Wayland/Hyprland/GNOME compatibility, responsiveness,
 - Is the main window still useful if tray support is unavailable?
 - Are errors shown inline and in plain language?
 - Does the rule-set editor protect against accidental invalid saves?
+- If `src/theme/*` changed, do generated theme tokens, template overrides, and raw QSS overlays still preserve text visibility and control states?
 
 ## Expected files/modules it influences
 

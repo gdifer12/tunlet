@@ -83,6 +83,8 @@ struct DiagnosticsConfig {
 };
 
 struct ThemeConfig {
+    QString themePath;
+    QString templatePath;
     QString qssPath;
 };
 

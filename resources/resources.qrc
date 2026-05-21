@@ -4,6 +4,7 @@
     <file>icons/nav-rules.svg</file>
     <file>icons/nav-settings.svg</file>
     <file>icons/tunlet.svg</file>
-    <file>styles/default.qss</file>
+    <file>styles/default.qss.in</file>
+    <file>themes/default.theme.json</file>
   </qresource>
 </RCC>

@@ -61,6 +61,10 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "        allowManualRefresh: true\n"
         << "editing:\n"
         << "  createBackup: false\n"
+        << "theme:\n"
+        << "  themePath: themes/custom.theme.json\n"
+        << "  templatePath: themes/custom.qss.in\n"
+        << "  qssPath: themes/overlay.qss\n"
         << "tray:\n"
         << "  keepRunningWithoutWindow: false\n"
         << "  startHidden: true\n"
@@ -127,6 +131,9 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     REQUIRE(config.diagnostics.connection.location.dynamicCache.refreshOnStartup == false);
     REQUIRE(config.diagnostics.connection.location.dynamicCache.allowManualRefresh == true);
     REQUIRE(config.editing.createBackup == false);
+    REQUIRE(config.theme.themePath == "/tmp/tunlet-root/themes/custom.theme.json");
+    REQUIRE(config.theme.templatePath == "/tmp/tunlet-root/themes/custom.qss.in");
+    REQUIRE(config.theme.qssPath == "/tmp/tunlet-root/themes/overlay.qss");
     REQUIRE(config.tray.keepRunningWithoutWindow == false);
     REQUIRE(config.tray.startHidden == true);
     REQUIRE(config.logging.enabled == true);
@@ -186,6 +193,9 @@ TEST_CASE("ConfigLoader derives default GeoIP paths from config directory", "[co
     REQUIRE(config.diagnostics.connection.location.dynamicCache.cachePath == dir.path() + "/geoip-cache.json");
     REQUIRE(config.tray.keepRunningWithoutWindow == true);
     REQUIRE(config.tray.startHidden == false);
+    REQUIRE(config.theme.themePath.isEmpty());
+    REQUIRE(config.theme.templatePath.isEmpty());
+    REQUIRE(config.theme.qssPath.isEmpty());
     REQUIRE(config.logging.enabled == false);
     REQUIRE(config.logging.level == tunlet::config::LoggingLevel::Info);
     REQUIRE(config.logging.textPath.isEmpty());
@@ -208,6 +218,28 @@ TEST_CASE("ConfigLoader derives default GeoIP paths from config directory", "[co
     REQUIRE(config.ui.keyboard.shortcuts.validateEditor == "Ctrl+Shift+V");
     REQUIRE(config.ui.keyboard.shortcuts.saveEditor == "Ctrl+S");
     REQUIRE(config.ui.keyboard.shortcuts.reloadEditor == "Ctrl+R");
+}
+
+TEST_CASE("ConfigLoader resolves theme override paths through configRoute", "[config]") {
+    const QString config = QString()
+        + "configRoute: /tmp/tunlet-root\n"
+        + "clashApi:\n"
+        + "  host: 127.0.0.1\n"
+        + "  port: 9090\n"
+        + "ruleSets:\n"
+        + "  forceProxyPath: force-proxy.json\n"
+        + "  forceDirectPath: force-direct.json\n"
+        + "  autoProxyPath: auto-proxy.json\n"
+        + "  autoDirectPath: auto-direct.json\n"
+        + "theme:\n"
+        + "  themePath: themes/custom.theme.json\n"
+        + "  templatePath: themes/custom.qss.in\n"
+        + "  qssPath: themes/overlay.qss\n";
+
+    const auto parsed = tunlet::config::ConfigLoader::loadFromData(config, "/tmp/tunlet-root/config.yaml");
+    REQUIRE(parsed.theme.themePath == "/tmp/tunlet-root/themes/custom.theme.json");
+    REQUIRE(parsed.theme.templatePath == "/tmp/tunlet-root/themes/custom.qss.in");
+    REQUIRE(parsed.theme.qssPath == "/tmp/tunlet-root/themes/overlay.qss");
 }
 
 TEST_CASE("ConfigLoader supports legacy location enabled/databasePath fields", "[config]") {

@@ -49,12 +49,14 @@ int main(int argc, char *argv[]) {
                            {{"config_path", config.configPath}});
 
     QString qssError;
-    if (!tunlet::theme::ThemeLoader::applyOptionalStylesheet(app, config.theme.qssPath, &qssError) &&
+    if (!tunlet::theme::ThemeLoader::applyTheme(app, config.theme, &qssError) &&
         !qssError.isEmpty()) {
         loggingService.logWarning("app.bootstrap",
-                                  "Failed to apply optional theme stylesheet",
+                                  "Failed to apply theme configuration",
                                   qssError,
-                                  {{"theme_path", config.theme.qssPath}});
+                                  {{"theme_path", config.theme.themePath},
+                                   {"template_path", config.theme.templatePath},
+                                   {"qss_path", config.theme.qssPath}});
         QMessageBox::warning(nullptr, "tunlet theme warning", qssError);
     }
 

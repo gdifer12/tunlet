@@ -60,7 +60,9 @@ diagnostics:
         allowManualRefresh: true # enables the dedicated "Refresh location data" action
 
 theme:
-  qssPath: ""
+  themePath: "" # optional custom.theme.json; deep-merges over the built-in default theme tokens
+  templatePath: "" # optional custom.qss.in; replaces the built-in QSS template used for rendering
+  qssPath: "" # optional raw QSS overlay appended after the rendered generated theme
 
 editing:
   createBackup: true

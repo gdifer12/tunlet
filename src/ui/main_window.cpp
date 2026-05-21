@@ -242,6 +242,21 @@ QString formatLoggingRotationArchivesText(const logging::LoggingStatus &status) 
     return QString("%1 archives").arg(status.rotationKeepFiles);
 }
 
+QString formatThemeSourceText(const config::ThemeConfig &themeConfig) {
+    QStringList parts;
+    parts << "Built-in generated theme";
+    if (!themeConfig.themePath.trimmed().isEmpty()) {
+        parts << QString("tokens %1").arg(compactPath(themeConfig.themePath));
+    }
+    if (!themeConfig.templatePath.trimmed().isEmpty()) {
+        parts << QString("template %1").arg(compactPath(themeConfig.templatePath));
+    }
+    if (!themeConfig.qssPath.trimmed().isEmpty()) {
+        parts << QString("QSS overlay %1").arg(compactPath(themeConfig.qssPath));
+    }
+    return parts.join(" + ");
+}
+
 QString compactProbeCommands(const config::AppConfig &config) {
     return QString("IP %1 · Delay %2 · DNS %3")
         .arg(commandName(config.diagnostics.connection.ipv4),
@@ -2420,7 +2435,7 @@ void MainWindow::updateDashboardCards() {
         m_infoProfilesValue->setText(QString("%1 available").arg(m_modeController->profiles().size()));
     }
     if (m_infoThemeValue) {
-        m_infoThemeValue->setText(m_config.theme.qssPath.isEmpty() ? "Built-in QSS theme" : compactPath(m_config.theme.qssPath));
+        m_infoThemeValue->setText(formatThemeSourceText(m_config.theme));
     }
     if (m_loggingStatusValue) {
         m_loggingStatusValue->setText(formatLoggingStatusText(m_lastLoggingStatus));
