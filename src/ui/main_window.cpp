@@ -822,11 +822,14 @@ QWidget *MainWindow::buildHealthStrip() {
     gridHost->setLayout(grid);
     layout->addWidget(gridHost, 1);
 
+    constexpr QSize footerRecheckIconSize(22, 22);
+    const QIcon footerRecheckIdleIcon(":/icons/recheck-idle.svg");
+
     auto *recheckButton = new QToolButton(strip);
     recheckButton->setObjectName("ghostButton");
     recheckButton->setCursor(Qt::PointingHandCursor);
-    recheckButton->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
-    recheckButton->setIconSize(QSize(16, 16));
+    recheckButton->setIcon(footerRecheckIdleIcon);
+    recheckButton->setIconSize(footerRecheckIconSize);
     recheckButton->setToolTip("Recheck diagnostics");
     recheckButton->setAutoRaise(false);
     recheckButton->setFixedSize(QSize(34, 34));
@@ -2063,7 +2066,7 @@ void MainWindow::updateRuntimeActionButtons() {
     if (m_footerRecheckButton) {
         m_footerRecheckButton->setEnabled(!combinedRuntimeBusy);
         m_footerRecheckButton->setIcon(combinedRuntimeBusy ? QIcon(":/icons/recheck-busy.svg")
-                                                           : style()->standardIcon(QStyle::SP_BrowserReload));
+                                                           : QIcon(":/icons/recheck-idle.svg"));
         m_footerRecheckButton->setToolTip(combinedRuntimeBusy ? "Refreshing runtime state..."
                                                               : "Recheck diagnostics");
     }
