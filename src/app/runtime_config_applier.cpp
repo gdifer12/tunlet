@@ -20,8 +20,10 @@ RuntimeConfigApplier::RuntimeConfigApplier(QApplication *application,
                                            rules::RuleSetService *ruleSetService,
                                            diagnostics::DiagnosticsService *diagnosticsService,
                                            logging::LoggingService *loggingService,
-                                           ui::TrayController *trayController)
-    : m_application(application),
+                                           ui::TrayController *trayController,
+                                           QObject *parent)
+    : QObject(parent),
+      m_application(application),
       m_clashClient(clashClient),
       m_modeController(modeController),
       m_configFileService(configFileService),
@@ -30,7 +32,7 @@ RuntimeConfigApplier::RuntimeConfigApplier(QApplication *application,
       m_loggingService(loggingService),
       m_trayController(trayController) {}
 
-RuntimeConfigApplyResult RuntimeConfigApplier::apply(const config::AppConfig &config) const {
+RuntimeConfigApplyResult RuntimeConfigApplier::apply(const config::AppConfig &config) {
     RuntimeConfigApplyResult result;
 
     if (m_loggingService) {
@@ -82,6 +84,8 @@ RuntimeConfigApplyResult RuntimeConfigApplier::apply(const config::AppConfig &co
                                   {},
                                   {{"config_path", config.configPath}});
     }
+
+    emit configApplied(config);
 
     return result;
 }

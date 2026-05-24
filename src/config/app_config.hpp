@@ -143,9 +143,20 @@ struct UiKeyboardConfig {
     UiKeyboardShortcutsConfig shortcuts;
 };
 
+enum class UiWindowActivationMode {
+    Auto,
+    Portable,
+    Hyprland,
+};
+
+struct UiWindowActivationConfig {
+    UiWindowActivationMode mode = UiWindowActivationMode::Auto;
+};
+
 struct UiConfig {
     UiTextSelectionConfig textSelection;
     UiKeyboardConfig keyboard;
+    UiWindowActivationConfig windowActivation;
 };
 
 struct AppConfig {

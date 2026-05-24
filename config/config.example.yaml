@@ -85,6 +85,8 @@ logging:
 ui:
   textSelection:
     enableInformationalLabels: true
+  windowActivation:
+    mode: "auto" # auto | portable | hyprland; auto tries Hyprland workspace-aware routing first when available
   keyboard:
     shortcuts:
       closeWindowPrimary: "Esc"

@@ -42,10 +42,13 @@ public:
                app::RuntimeConfigApplier *runtimeConfigApplier,
                logging::LoggingService *loggingService,
                bool trayAvailable,
+               int windowInstanceId,
                QWidget *parent = nullptr);
+    int windowInstanceId() const;
 
 public slots:
     void showAndRaise();
+    void applyRuntimeConfig(const config::AppConfig &config);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -79,6 +82,7 @@ private:
     };
 
     void buildUi(bool trayAvailable);
+    void updateManagedWindowTitle();
     QWidget *buildWindowTitleBar();
     QWidget *buildTopRuntimeStrip();
     QWidget *buildHealthStrip();
@@ -260,6 +264,7 @@ private:
     QVector<QPointer<QShortcut>> m_shortcuts;
 
     bool m_trayAvailable = false;
+    int m_windowInstanceId = 0;
 };
 
 }  // namespace tunlet::ui

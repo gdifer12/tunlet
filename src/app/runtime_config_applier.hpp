@@ -2,6 +2,7 @@
 
 #include "config/app_config.hpp"
 
+#include <QObject>
 #include <QString>
 
 class QApplication;
@@ -37,7 +38,9 @@ struct RuntimeConfigApplyResult {
     QString warning;
 };
 
-class RuntimeConfigApplier {
+class RuntimeConfigApplier : public QObject {
+    Q_OBJECT
+
 public:
     RuntimeConfigApplier(QApplication *application,
                          clash::ClashApiClient *clashClient,
@@ -46,9 +49,13 @@ public:
                          rules::RuleSetService *ruleSetService,
                          diagnostics::DiagnosticsService *diagnosticsService,
                          logging::LoggingService *loggingService,
-                         ui::TrayController *trayController);
+                         ui::TrayController *trayController,
+                         QObject *parent = nullptr);
 
-    RuntimeConfigApplyResult apply(const config::AppConfig &config) const;
+    RuntimeConfigApplyResult apply(const config::AppConfig &config);
+
+signals:
+    void configApplied(const config::AppConfig &config);
 
 private:
     QApplication *m_application = nullptr;

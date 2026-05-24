@@ -490,6 +490,7 @@ MainWindow::MainWindow(const config::AppConfig &config,
                        app::RuntimeConfigApplier *runtimeConfigApplier,
                        logging::LoggingService *loggingService,
                        bool trayAvailable,
+                       int windowInstanceId,
                        QWidget *parent)
     : QMainWindow(parent),
       m_config(config),
@@ -499,7 +500,8 @@ MainWindow::MainWindow(const config::AppConfig &config,
       m_loggingService(loggingService),
       m_ruleSetService(ruleSetService),
       m_runtimeConfigApplier(runtimeConfigApplier),
-      m_trayAvailable(trayAvailable) {
+      m_trayAvailable(trayAvailable),
+      m_windowInstanceId(windowInstanceId) {
     buildUi(trayAvailable);
     populateModeProfiles();
     populateRuleFiles();
@@ -526,6 +528,10 @@ MainWindow::MainWindow(const config::AppConfig &config,
     onDiagnosticsUpdated(m_diagnosticsService->snapshot());
 }
 
+int MainWindow::windowInstanceId() const {
+    return m_windowInstanceId;
+}
+
 void MainWindow::showAndRaise() {
     show();
     if (isMinimized()) {
@@ -535,8 +541,19 @@ void MainWindow::showAndRaise() {
     activateWindow();
 }
 
+void MainWindow::applyRuntimeConfig(const config::AppConfig &config) {
+    applyConfig(config);
+}
+
 void MainWindow::closeEvent(QCloseEvent *event) {
-    if (m_trayAvailable && m_config.tray.keepRunningWithoutWindow) {
+    int visibleWindowCount = 0;
+    for (QWidget *widget : QApplication::topLevelWidgets()) {
+        if (qobject_cast<MainWindow *>(widget) && widget->isVisible()) {
+            ++visibleWindowCount;
+        }
+    }
+
+    if (m_trayAvailable && m_config.tray.keepRunningWithoutWindow && visibleWindowCount <= 1) {
         closeSelectorPopup();
         hide();
         if (m_loggingService) {
@@ -634,7 +651,7 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
 }
 
 void MainWindow::buildUi(bool trayAvailable) {
-    setWindowTitle("tunlet");
+    updateManagedWindowTitle();
     resize(700, 700);
     setMinimumSize(640, 620);
 
@@ -688,6 +705,10 @@ void MainWindow::buildUi(bool trayAvailable) {
     reloadSettingsFile();
 
     Q_UNUSED(trayAvailable);
+}
+
+void MainWindow::updateManagedWindowTitle() {
+    setWindowTitle(QString("tunlet [#%1]").arg(m_windowInstanceId));
 }
 
 QWidget *MainWindow::buildWindowTitleBar() {
@@ -2908,8 +2929,9 @@ void MainWindow::saveSettingsFile() {
     app::RuntimeConfigApplyResult applyResult;
     if (m_runtimeConfigApplier) {
         applyResult = m_runtimeConfigApplier->apply(parsedConfig);
+    } else {
+        applyConfig(parsedConfig);
     }
-    applyConfig(parsedConfig);
     m_loadedSettingsText = text;
     if (!applyResult.warning.trimmed().isEmpty()) {
         const QString warning = QString("Config saved and applied with warning: %1").arg(applyResult.warning);
@@ -2968,8 +2990,9 @@ void MainWindow::reloadSettingsFile() {
         app::RuntimeConfigApplyResult applyResult;
         if (m_runtimeConfigApplier) {
             applyResult = m_runtimeConfigApplier->apply(parsedConfig);
+        } else {
+            applyConfig(parsedConfig);
         }
-        applyConfig(parsedConfig);
         if (!applyResult.warning.trimmed().isEmpty()) {
             const QString warning = QString("Loaded config with warning: %1").arg(applyResult.warning);
             setSettingsBanner(warning, "warn");

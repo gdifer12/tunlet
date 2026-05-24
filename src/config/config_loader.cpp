@@ -255,6 +255,21 @@ config::LoggingLevel parseLoggingLevel(const QString &levelText) {
     throw std::runtime_error(QString("unsupported logging.level: %1").arg(levelText).toStdString());
 }
 
+config::UiWindowActivationMode parseUiWindowActivationMode(const QString &modeText) {
+    const QString normalized = modeText.trimmed().toLower();
+    if (normalized.isEmpty() || normalized == "auto") {
+        return config::UiWindowActivationMode::Auto;
+    }
+    if (normalized == "portable") {
+        return config::UiWindowActivationMode::Portable;
+    }
+    if (normalized == "hyprland") {
+        return config::UiWindowActivationMode::Hyprland;
+    }
+
+    throw std::runtime_error(QString("unsupported ui.windowActivation.mode: %1").arg(modeText).toStdString());
+}
+
 AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
     if (!root.IsMap()) {
         throw std::runtime_error("config root must be a map");
@@ -649,6 +664,19 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
                     readString(shortcuts, "saveEditor", shortcutConfig.saveEditor, "ui.keyboard.shortcuts");
                 shortcutConfig.reloadEditor =
                     readString(shortcuts, "reloadEditor", shortcutConfig.reloadEditor, "ui.keyboard.shortcuts");
+            }
+        }
+
+        if (const YAML::Node windowActivation = ui["windowActivation"]) {
+            if (!windowActivation.IsMap()) {
+                throw std::runtime_error("ui.windowActivation must be a map");
+            }
+            if (windowActivation["mode"]) {
+                if (!windowActivation["mode"].IsScalar()) {
+                    throw std::runtime_error("ui.windowActivation.mode must be a string");
+                }
+                config.ui.windowActivation.mode = parseUiWindowActivationMode(
+                    QString::fromStdString(windowActivation["mode"].as<std::string>()));
             }
         }
     }

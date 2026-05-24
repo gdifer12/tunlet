@@ -22,7 +22,10 @@ qt_standard_project_setup()
 
 set(TUNLET_SOURCES
     src/app/application_paths.cpp
+    src/app/hyprland_window_locator.cpp
+    src/app/instance_controller.cpp
     src/app/runtime_config_applier.cpp
+    src/app/window_manager.cpp
     src/core/logical_mode.cpp
     src/config/config_loader.cpp
     src/config/config_file_service.cpp
@@ -81,6 +84,7 @@ if(BUILD_TESTING)
         tests/ruleset_service_tests.cpp
         tests/theme_loader_tests.cpp
         tests/tray_controller_tests.cpp
+        tests/window_management_tests.cpp
     )
     target_link_libraries(
         tunlet_tests

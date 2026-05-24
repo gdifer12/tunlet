@@ -1,5 +1,7 @@
 #include "app/application_paths.hpp"
+#include "app/instance_controller.hpp"
 #include "app/runtime_config_applier.hpp"
+#include "app/window_manager.hpp"
 #include "clash/clash_api_client.hpp"
 #include "clash/mode_controller.hpp"
 #include "config/config_file_service.hpp"
@@ -48,6 +50,19 @@ int main(int argc, char *argv[]) {
                            {},
                            {{"config_path", config.configPath}});
 
+    tunlet::app::InstanceController instanceController(&loggingService, &app);
+    QString instanceError;
+    const auto instanceResult = instanceController.acquireOrForward(config.configPath, &instanceError);
+    if (instanceResult == tunlet::app::InstanceController::AcquireResult::ForwardedToPrimary) {
+        return 0;
+    }
+    if (instanceResult == tunlet::app::InstanceController::AcquireResult::Failed) {
+        const QString error = QString("Failed to initialize single-instance server: %1").arg(instanceError);
+        loggingService.logError("app.instance", "Failed to initialize single-instance server", instanceError);
+        QMessageBox::critical(nullptr, "tunlet instance error", error);
+        return 1;
+    }
+
     QString qssError;
     if (!tunlet::theme::ThemeLoader::applyTheme(app, config.theme, &qssError) &&
         !qssError.isEmpty()) {
@@ -74,8 +89,9 @@ int main(int argc, char *argv[]) {
         &ruleSetService,
         &diagnosticsService,
         &loggingService,
-        &trayController);
-    tunlet::ui::MainWindow mainWindow(
+        &trayController,
+        &app);
+    tunlet::app::WindowManager windowManager(
         config,
         &modeController,
         &configFileService,
@@ -83,14 +99,29 @@ int main(int argc, char *argv[]) {
         &ruleSetService,
         &runtimeConfigApplier,
         &loggingService,
-        trayController.isTrayAvailable());
+        trayController.isTrayAvailable(),
+        &app);
     const bool keepRunningInTray = trayController.isTrayAvailable() && config.tray.keepRunningWithoutWindow;
     const bool startHiddenInTray = trayController.isTrayAvailable() && config.tray.startHidden;
 
     app.setQuitOnLastWindowClosed(!keepRunningInTray);
 
     trayController.setup(modeController.status(), modeController.profiles(), diagnosticsService.snapshot(), config.tray);
-    QObject::connect(&trayController, &tunlet::ui::TrayController::openMainWindowRequested, &mainWindow, &tunlet::ui::MainWindow::showAndRaise);
+    QObject::connect(&instanceController,
+                     &tunlet::app::InstanceController::openWindowRequested,
+                     &windowManager,
+                     &tunlet::app::WindowManager::openWindowFromSecondaryInstance);
+    for (int pendingOpenRequests = instanceController.takePendingOpenWindowRequests(); pendingOpenRequests > 0; --pendingOpenRequests) {
+        windowManager.openWindowFromSecondaryInstance();
+    }
+    QObject::connect(&runtimeConfigApplier,
+                     &tunlet::app::RuntimeConfigApplier::configApplied,
+                     &windowManager,
+                     &tunlet::app::WindowManager::applyConfig);
+    QObject::connect(&trayController,
+                     &tunlet::ui::TrayController::openMainWindowRequested,
+                     &windowManager,
+                     &tunlet::app::WindowManager::openWindowFromTray);
     QObject::connect(&trayController,
                      &tunlet::ui::TrayController::refreshRequested,
                      &modeController,
@@ -111,7 +142,7 @@ int main(int argc, char *argv[]) {
 
     trayController.show();
     if (!startHiddenInTray) {
-        mainWindow.show();
+        windowManager.openWindow(tunlet::app::WindowManager::OpenReason::InitialShow);
     }
     loggingService.logInfo("app.bootstrap",
                            "Initialized runtime services",

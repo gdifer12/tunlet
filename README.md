@@ -145,6 +145,8 @@ This avoids hardcoding the complete list of supported mode values in the UI.
 - `keepRunningWithoutWindow`: when `true`, closing the main window hides it to tray instead of exiting
 - `startHidden`: when `true`, and a tray host is available, tunlet starts without showing the main window
 
+`tunlet` is single-instance per resolved config path. Launching `tunlet` again with the same `config.yaml` does not start a second tray process; it forwards an `open window` request to the running instance instead.
+
 `theme` controls the generated application theme:
 
 - `themePath`: optional `custom.theme.json` override; deep-merges over the built-in theme tokens
@@ -170,10 +172,11 @@ If `logging.rotation.enabled` is `true`, both `rotation.maxFileBytes` and `rotat
 `ui` controls keyboard behavior and copyable UI text:
 
 - `textSelection.enableInformationalLabels`: when `true`, most informational labels in the UI can be selected and copied with the mouse
+- `windowActivation.mode`: `auto`, `portable`, or `hyprland`; `auto` tries Hyprland workspace-aware window routing first and falls back to portable behavior
 - `keyboard.shortcuts.*`: Qt key-sequence strings for close, page navigation, selector opening, refresh, validate, save, and reload actions
 - any shortcut entry may be set to an empty string to disable that binding
 
-`Save and apply` and `Reload` on the `Settings / Info` page re-apply runtime configuration without restarting the process. This includes logging level and sink paths. `tray.startHidden` is the exception: it is stored immediately but only affects the next launch.
+`Save and apply` and `Reload` on the `Settings / Info` page re-apply runtime configuration without restarting the process. This includes logging level and sink paths, plus `ui.windowActivation.mode`. `tray.startHidden` is the exception: it is stored immediately but only affects the next launch.
 
 ## MVP behavior
 
@@ -185,6 +188,8 @@ If `logging.rotation.enabled` is `true`, both `rotation.maxFileBytes` and `rotat
 - Right-click opens a native tray menu built from standard actions and separators rather than redundant section-label rows.
 - Opening the tray menu triggers one immediate runtime refresh; after that, automatic diagnostics refresh still comes only from `diagnostics.refreshIntervalMs`.
 - Tray `Refresh` stays a manual one-shot action.
+- Repeating `tunlet` from the shell while the same config is already running opens a window in the existing process instead of creating a second tray instance.
+- Window-open routing is config-driven: portable mode reuses the active tunlet window or opens a new one, while Hyprland mode can focus an existing tunlet window on the current workspace before falling back to opening a new one.
 - Diagnostics logging records the actual runtime refresh cycle, including startup refresh, periodic refresh, tray refresh, config-apply refresh, and the final success or failure result for each cycle.
 - Additional profiles are listed and can be switched from the main window or tray menu.
 - The UI also shows the `mode-list` reported by `/configs`, so you can see which backend modes are actually available.
