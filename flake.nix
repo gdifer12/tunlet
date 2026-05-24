@@ -10,39 +10,9 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        cleanSrc = pkgs.lib.cleanSourceWith {
-          src = ./.;
-          filter = path: type:
-            let
-              base = baseNameOf path;
-            in
-              !(base == "build" || base == "result");
-        };
       in
       {
-        packages.default = pkgs.stdenv.mkDerivation {
-          pname = "tunlet";
-          version = "0.1.0";
-          src = cleanSrc;
-
-          nativeBuildInputs = with pkgs; [
-            cmake
-            ninja
-            pkg-config
-            qt6.wrapQtAppsHook
-          ];
-
-          buildInputs = with pkgs; [
-            libmaxminddb
-            qt6.qtbase
-            qt6.qtsvg
-            yaml-cpp
-          ];
-
-          cmakeFlags = [
-            "-DBUILD_TESTING=OFF"
-          ];
-        };
+        packages.default = pkgs.callPackage ./package.nix { };
 
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [

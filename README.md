@@ -15,13 +15,15 @@ It is intentionally not a VPN manager, service manager, config generator, or net
 - Optional command-driven connection diagnostics for IP, delay, DNS, and GeoLite2 location
 - Optional dual-sink file logging with human-readable text, JSON Lines output, and size-based rotation
 - Built-in generated QSS theme with optional token, template, and raw-QSS overrides
-- Nix flake with `devShell` and package build
+- Reusable Nix `package.nix` plus flake wrapper for `devShell` and direct builds
 
 ## Build and run
 
 ### NixOS / flake-based development
 
-The project ships its own flake and can be built directly from the repository:
+The reusable package definition lives in [package.nix](package.nix). The repository flake is a thin wrapper around it for direct `nix build` / `nix develop` workflows.
+
+For local development, the repository still builds directly through its own flake:
 
 ```bash
 nix --extra-experimental-features 'nix-command flakes' develop -c bash
@@ -35,6 +37,37 @@ You can also build the package directly:
 ```bash
 nix --extra-experimental-features 'nix-command flakes' build
 ```
+
+### Import into another flake
+
+If you want to consume tunlet from a host flake, prefer importing [package.nix](package.nix) through `pkgs.callPackage`:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    tunlet-src.url = "path:/work/tunlet";
+  };
+
+  outputs = { self, nixpkgs, tunlet-src, ... }:
+    let
+      system = "x86_64-linux";
+      pkgs = import nixpkgs { inherit system; };
+      tunlet = pkgs.callPackage "${tunlet-src}/package.nix" { };
+    in {
+      nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [
+          ({ ... }: {
+            environment.systemPackages = [ tunlet ];
+          })
+        ];
+      };
+    };
+}
+```
+
+That keeps `package.nix` as the canonical build instruction while `flake.nix` remains the convenience entrypoint for this repository itself.
 
 If you are using a separate container-level devshell such as `/state/agent-env`, treat that as environment-specific convenience only. It is not required by this repository and is not part of the project layout.
 
