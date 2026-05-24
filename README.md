@@ -77,6 +77,13 @@ If you are using a separate container-level devshell such as `/state/agent-env`,
 - If no tray host is available, the main window still works.
 - The app uses a built-in generated QSS theme and can optionally load external token, template, or raw-QSS overrides.
 
+If you use Hyprland and want `tunlet` windows to open as floating utility windows, add rules like these to your Hyprland config:
+
+```text
+windowrulev2 = float,title:^(.*tunlet.*)$
+windowrulev2 = size 700 800,title:^(.*tunlet.*)$
+```
+
 ## Configuration
 
 Default config path:
@@ -190,6 +197,7 @@ If `logging.rotation.enabled` is `true`, both `rotation.maxFileBytes` and `rotat
 - Tray `Refresh` stays a manual one-shot action.
 - Repeating `tunlet` from the shell while the same config is already running opens a window in the existing process instead of creating a second tray instance.
 - Window-open routing is config-driven: portable mode reuses the active tunlet window or opens a new one, while Hyprland mode can focus an existing tunlet window on the current workspace before falling back to opening a new one.
+- In Hyprland mode, shell-triggered opens use Hyprland IPC focus handoff so a repeated `tunlet` launch can transfer compositor focus to the selected tunlet window instead of relying only on `activateWindow()`.
 - Diagnostics logging records the actual runtime refresh cycle, including startup refresh, periodic refresh, tray refresh, config-apply refresh, and the final success or failure result for each cycle.
 - Additional profiles are listed and can be switched from the main window or tray menu.
 - The UI also shows the `mode-list` reported by `/configs`, so you can see which backend modes are actually available.

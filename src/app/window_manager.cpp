@@ -8,6 +8,7 @@
 #include "ui/main_window.hpp"
 
 #include <QApplication>
+#include <QTimer>
 #include <QWidget>
 
 namespace tunlet::app {
@@ -47,9 +48,12 @@ ui::MainWindow *WindowManager::openWindow(OpenReason reason) {
 
     QString detail;
     ui::MainWindow *target = nullptr;
+    HyprlandWindowMatch hyprlandMatch;
     const Resolution resolution = resolveBackend();
     if (resolution.backend == ActivationBackend::Hyprland) {
-        target = firstWindowOnCurrentHyprlandWorkspace(&detail);
+        hyprlandMatch = firstHyprlandWindowOnCurrentWorkspace();
+        target = hyprlandMatch.window;
+        detail = hyprlandMatch.detail;
         if (!target && detail.startsWith("hyprland_fallback=")) {
             target = activeManagedWindow();
         }
@@ -59,6 +63,17 @@ ui::MainWindow *WindowManager::openWindow(OpenReason reason) {
 
     if (target) {
         target->showAndRaise();
+        if (reason == OpenReason::SecondaryInstance && resolution.backend == ActivationBackend::Hyprland) {
+            if (tryFocusWindowViaHyprland(hyprlandMatch, reason, detail)) {
+                logOpenDecision(reason,
+                                "Focused existing tunlet window",
+                                detail.isEmpty()
+                                    ? QString("backend=%1").arg(backendName(resolution.backend == ActivationBackend::Hyprland))
+                                    : QString("backend=%1 %2")
+                                          .arg(backendName(resolution.backend == ActivationBackend::Hyprland), detail));
+                return target;
+            }
+        }
         logOpenDecision(reason,
                         "Focused existing tunlet window",
                         detail.isEmpty()
@@ -71,6 +86,9 @@ ui::MainWindow *WindowManager::openWindow(OpenReason reason) {
     target = firstHiddenWindow();
     if (target) {
         target->showAndRaise();
+        if (reason == OpenReason::SecondaryInstance && resolution.backend == ActivationBackend::Hyprland) {
+            scheduleHyprlandFocusFollowup(target, reason);
+        }
         logOpenDecision(reason,
                         "Reused hidden tunlet window",
                         QString("backend=%1").arg(backendName(resolution.backend == ActivationBackend::Hyprland)));
@@ -79,6 +97,9 @@ ui::MainWindow *WindowManager::openWindow(OpenReason reason) {
 
     target = createWindow();
     target->showAndRaise();
+    if (reason == OpenReason::SecondaryInstance && resolution.backend == ActivationBackend::Hyprland) {
+        scheduleHyprlandFocusFollowup(target, reason);
+    }
     logOpenDecision(reason,
                     "Opened new tunlet window",
                     detail.isEmpty()
@@ -173,29 +194,110 @@ ui::MainWindow *WindowManager::firstHiddenWindow() const {
 }
 
 ui::MainWindow *WindowManager::firstWindowOnCurrentHyprlandWorkspace(QString *detail) const {
+    const HyprlandWindowMatch match = firstHyprlandWindowOnCurrentWorkspace();
+    if (detail) {
+        *detail = match.detail;
+    }
+    return match.window;
+}
+
+WindowManager::HyprlandWindowMatch WindowManager::firstHyprlandWindowOnCurrentWorkspace() const {
+    HyprlandWindowMatch match;
     const HyprlandWindowLocator::Snapshot snapshot = m_hyprlandWindowLocator.snapshotForCurrentProcess();
     if (!snapshot.ok) {
-        if (detail) {
-            *detail = QString("hyprland_fallback=%1").arg(snapshot.error);
-        }
-        return nullptr;
+        match.detail = QString("hyprland_fallback=%1").arg(snapshot.error);
+        return match;
     }
 
-    for (const auto &title : snapshot.currentWorkspaceWindowTitles) {
+    for (const auto &client : snapshot.currentWorkspaceClients) {
         for (const auto &window : m_windows) {
-            if (window && window->windowTitle() == title) {
-                if (detail) {
-                    *detail = QString("workspace_id=%1").arg(snapshot.activeWorkspaceId);
-                }
-                return window;
+            if (window && window->windowTitle() == client.title) {
+                match.window = window;
+                match.address = client.address;
+                match.detail = QString("workspace_id=%1 address=%2").arg(snapshot.activeWorkspaceId).arg(client.address);
+                return match;
             }
         }
     }
 
-    if (detail) {
-        *detail = QString("workspace_id=%1 no_window_on_workspace").arg(snapshot.activeWorkspaceId);
+    match.detail = QString("workspace_id=%1 no_window_on_workspace").arg(snapshot.activeWorkspaceId);
+    return match;
+}
+
+bool WindowManager::tryFocusWindowViaHyprland(const HyprlandWindowMatch &match,
+                                              OpenReason reason,
+                                              const QString &selectionDetail) const {
+    if (!match.window || match.address.trimmed().isEmpty()) {
+        if (m_loggingService && reason == OpenReason::SecondaryInstance) {
+            m_loggingService->logWarning("window.focus",
+                                         "Skipped Hyprland focus dispatch for secondary-instance open",
+                                         "Window match has no Hyprland address",
+                                         {{"reason", openReasonName(reason)}, {"selection_detail", selectionDetail}});
+        }
+        return false;
     }
-    return nullptr;
+
+    QString error;
+    if (!m_hyprlandWindowLocator.focusWindowByAddress(match.address, &error)) {
+        if (m_loggingService) {
+            m_loggingService->logWarning("window.focus",
+                                         "Hyprland focus dispatch failed",
+                                         error,
+                                         {{"reason", openReasonName(reason)},
+                                          {"address", match.address},
+                                          {"selection_detail", selectionDetail}});
+        }
+        return false;
+    }
+
+    if (m_loggingService) {
+        m_loggingService->logInfo("window.focus",
+                                  "Focused tunlet window through Hyprland IPC",
+                                  {},
+                                  {{"reason", openReasonName(reason)},
+                                   {"address", match.address},
+                                   {"selection_detail", selectionDetail}});
+    }
+    return true;
+}
+
+void WindowManager::scheduleHyprlandFocusFollowup(ui::MainWindow *window, OpenReason reason, int remainingAttempts) const {
+    if (!window || remainingAttempts <= 0) {
+        if (window && m_loggingService) {
+            m_loggingService->logWarning("window.focus",
+                                         "Timed out waiting for Hyprland window mapping",
+                                         {},
+                                         {{"reason", openReasonName(reason)},
+                                          {"window_title", window->windowTitle()}});
+        }
+        return;
+    }
+
+    QPointer<ui::MainWindow> guardedWindow(window);
+    QTimer::singleShot(60, this, [this, guardedWindow, reason, remainingAttempts]() {
+        if (!guardedWindow) {
+            return;
+        }
+
+        HyprlandWindowMatch match;
+        const HyprlandWindowLocator::Snapshot snapshot = m_hyprlandWindowLocator.snapshotForCurrentProcess();
+        if (snapshot.ok) {
+            for (const auto &client : snapshot.currentWorkspaceClients) {
+                if (client.title == guardedWindow->windowTitle()) {
+                    match.window = guardedWindow;
+                    match.address = client.address;
+                    match.detail = QString("workspace_id=%1 address=%2").arg(snapshot.activeWorkspaceId).arg(client.address);
+                    break;
+                }
+            }
+        }
+
+        if (!match.address.trimmed().isEmpty() && tryFocusWindowViaHyprland(match, reason, match.detail)) {
+            return;
+        }
+
+        scheduleHyprlandFocusFollowup(guardedWindow, reason, remainingAttempts - 1);
+    });
 }
 
 WindowManager::Resolution WindowManager::resolveBackend() const {

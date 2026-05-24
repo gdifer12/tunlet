@@ -79,11 +79,20 @@ private:
         QString detail;
     };
 
+    struct HyprlandWindowMatch {
+        QPointer<ui::MainWindow> window;
+        QString address;
+        QString detail;
+    };
+
     ui::MainWindow *createWindow();
     void pruneClosedWindows() const;
     ui::MainWindow *activeManagedWindow() const;
     ui::MainWindow *firstHiddenWindow() const;
     ui::MainWindow *firstWindowOnCurrentHyprlandWorkspace(QString *detail) const;
+    HyprlandWindowMatch firstHyprlandWindowOnCurrentWorkspace() const;
+    bool tryFocusWindowViaHyprland(const HyprlandWindowMatch &match, OpenReason reason, const QString &selectionDetail) const;
+    void scheduleHyprlandFocusFollowup(ui::MainWindow *window, OpenReason reason, int remainingAttempts = 8) const;
     Resolution resolveBackend() const;
     void logOpenDecision(OpenReason reason, const QString &action, const QString &detail = {}) const;
     QString openReasonName(OpenReason reason) const;

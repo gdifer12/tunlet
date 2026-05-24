@@ -86,7 +86,7 @@ ui:
   textSelection:
     enableInformationalLabels: true
   windowActivation:
-    mode: "auto" # auto | portable | hyprland; auto tries Hyprland workspace-aware routing first when available
+    mode: "auto" # auto | portable | hyprland; auto tries Hyprland workspace-aware routing and focus handoff first when available
   keyboard:
     shortcuts:
       closeWindowPrimary: "Esc"

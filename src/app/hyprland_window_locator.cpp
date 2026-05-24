@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QFileInfo>
 #include <QLocalSocket>
 
 namespace tunlet::app {
@@ -15,11 +16,50 @@ QString HyprlandWindowLocator::runtimeSocketPath() const {
     if (instanceSignature.isEmpty() || runtimeDir.isEmpty()) {
         return {};
     }
-    return QDir(runtimeDir).filePath(QString("hypr/%1/.socket.sock").arg(instanceSignature));
+
+    const QString runtimePath = QDir(runtimeDir).filePath(QString("hypr/%1/.socket.sock").arg(instanceSignature));
+    if (QFileInfo::exists(runtimePath)) {
+        return runtimePath;
+    }
+
+    const QString tmpPath = QDir("/tmp").filePath(QString("hypr/%1/.socket.sock").arg(instanceSignature));
+    if (QFileInfo::exists(tmpPath)) {
+        return tmpPath;
+    }
+
+    return runtimePath;
 }
 
 bool HyprlandWindowLocator::isAvailable() const {
     return !runtimeSocketPath().trimmed().isEmpty();
+}
+
+bool HyprlandWindowLocator::focusWindowByAddress(const QString &address, QString *errorMessage) const {
+    const QString trimmedAddress = address.trimmed();
+    if (trimmedAddress.isEmpty()) {
+        if (errorMessage) {
+            *errorMessage = "Hyprland window address is empty";
+        }
+        return false;
+    }
+
+    QString error;
+    const QByteArray response = query(QString("dispatch focuswindow address:%1").arg(trimmedAddress).toUtf8(), &error);
+    if (response.isEmpty()) {
+        if (errorMessage) {
+            *errorMessage = error.isEmpty() ? QString("Hyprland focus dispatch returned no data") : error;
+        }
+        return false;
+    }
+
+    if (QString::fromUtf8(response).trimmed().compare("ok", Qt::CaseInsensitive) != 0) {
+        if (errorMessage) {
+            *errorMessage = QString::fromUtf8(response).trimmed();
+        }
+        return false;
+    }
+
+    return true;
 }
 
 QByteArray HyprlandWindowLocator::query(const QByteArray &command, QString *errorMessage) const {
@@ -101,14 +141,17 @@ HyprlandWindowLocator::Snapshot HyprlandWindowLocator::snapshotForCurrentProcess
         }
 
         const QJsonObject workspace = client.value("workspace").toObject();
-        if (workspace.value("id").toInt(-1) != snapshot.activeWorkspaceId) {
+        const int workspaceId = workspace.value("id").toInt(-1);
+        if (workspaceId != snapshot.activeWorkspaceId) {
             continue;
         }
 
-        const QString title = client.value("title").toString().trimmed();
-        if (!title.isEmpty()) {
-            snapshot.currentWorkspaceWindowTitles.push_back(title);
-        }
+        ClientInfo clientInfo;
+        clientInfo.address = client.value("address").toString().trimmed();
+        clientInfo.title = client.value("title").toString().trimmed();
+        clientInfo.workspaceId = workspaceId;
+        clientInfo.pid = client.value("pid").toInteger();
+        snapshot.currentWorkspaceClients.push_back(clientInfo);
     }
 
     snapshot.ok = true;

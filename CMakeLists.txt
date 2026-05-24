@@ -78,6 +78,7 @@ if(BUILD_TESTING)
         tests/config_loader_tests.cpp
         tests/diagnostics_parsing_tests.cpp
         tests/geoip_provider_tests.cpp
+        tests/hyprland_window_locator_tests.cpp
         tests/logging_service_tests.cpp
         tests/logical_mode_tests.cpp
         tests/mode_selection_state_tests.cpp
