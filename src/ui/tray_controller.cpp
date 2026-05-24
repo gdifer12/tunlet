@@ -76,6 +76,17 @@ QAction *addStaticAction(QMenu *menu, const QString &text) {
     return action;
 }
 
+bool hasRuntimeRefreshFailure(const diagnostics::DiagnosticsSnapshot &snapshot) {
+    return snapshot.lastRuntimeRefreshFailureDetail.startsWith("Runtime diagnostics refresh failed", Qt::CaseInsensitive);
+}
+
+bool shouldUseErrorTrayIcon(const clash::ModeStatus &status, const diagnostics::DiagnosticsSnapshot &snapshot) {
+    if (snapshot.runtimeDiagnosticsStale || hasRuntimeRefreshFailure(snapshot)) {
+        return true;
+    }
+    return status.lastUpdated.isValid() && !status.reachable;
+}
+
 }  // namespace
 
 TrayController::TrayController(logging::LoggingService *loggingService, QObject *parent)
@@ -296,7 +307,19 @@ void TrayController::refreshMenuPresentation() {
         action->setChecked(profile.name == m_visibleStatus.currentProfileName);
     }
 
+    updateTrayIcon();
     updateToolTip();
+}
+
+void TrayController::updateTrayIcon() {
+    if (!m_trayIcon) {
+        return;
+    }
+
+    const QString iconPath =
+        shouldUseErrorTrayIcon(m_visibleStatus, m_visibleDiagnostics) ? QString(":/icons/tunlet-error.svg")
+                                                                      : QString(":/icons/tunlet.svg");
+    m_trayIcon->setIcon(QIcon(iconPath));
 }
 
 void TrayController::updateToolTip() {

@@ -5,6 +5,7 @@
     <file>icons/nav-settings.svg</file>
     <file>icons/recheck-busy.svg</file>
     <file>icons/recheck-idle.svg</file>
+    <file>icons/tunlet-error.svg</file>
     <file>icons/tunlet.svg</file>
     <file>styles/default.qss.in</file>
     <file>themes/default.theme.json</file>

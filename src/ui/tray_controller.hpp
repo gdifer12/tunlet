@@ -59,6 +59,7 @@ private:
     void reconcilePendingState();
     void rebuildMenu();
     void refreshMenuPresentation();
+    void updateTrayIcon();
     void updateToolTip();
     void requestMenuRefresh(MenuRefreshOrigin origin);
     void requestModeSwitch(const QString &profileName);

@@ -4,6 +4,8 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QIcon>
+#include <QImage>
 #include <QMenu>
 #include <QSignalSpy>
 #include <QSystemTrayIcon>
@@ -55,6 +57,10 @@ QAction *findAction(QMenu *menu, const QString &text) {
         }
     }
     return nullptr;
+}
+
+QImage iconImage(const QIcon &icon) {
+    return icon.pixmap(32, 32).toImage();
 }
 
 tunlet::clash::ModeStatus makeStatus() {
@@ -234,4 +240,32 @@ TEST_CASE("TrayController refresh action emits a manual refresh request", "[tray
     REQUIRE(refreshAction != nullptr);
     refreshAction->trigger();
     REQUIRE(refreshSpy.count() == 1);
+}
+
+TEST_CASE("TrayController switches tray icon to error variant for degraded runtime state", "[tray]") {
+    testApplication();
+
+    tunlet::ui::TrayController controller;
+    tunlet::config::TrayConfig trayConfig;
+    controller.setup(makeStatus(), makeProfiles(), makeDiagnostics(), trayConfig);
+
+    QSystemTrayIcon *trayIcon = trayIconFor(controller);
+    REQUIRE(trayIcon != nullptr);
+    REQUIRE(iconImage(trayIcon->icon()) == iconImage(QIcon(":/icons/tunlet.svg")));
+
+    tunlet::diagnostics::DiagnosticsSnapshot failedDiagnostics = makeDiagnostics();
+    failedDiagnostics.runtimeDiagnosticsStale = true;
+    failedDiagnostics.lastRuntimeRefreshFailureDetail = "Runtime diagnostics refresh failed: Delay unavailable";
+    controller.updateDiagnostics(failedDiagnostics);
+    REQUIRE(iconImage(trayIcon->icon()) == iconImage(QIcon(":/icons/tunlet-error.svg")));
+
+    tunlet::diagnostics::DiagnosticsSnapshot recoveredDiagnostics = makeDiagnostics();
+    controller.updateDiagnostics(recoveredDiagnostics);
+    REQUIRE(iconImage(trayIcon->icon()) == iconImage(QIcon(":/icons/tunlet.svg")));
+
+    tunlet::clash::ModeStatus unreachableStatus = makeStatus();
+    unreachableStatus.reachable = false;
+    unreachableStatus.lastUpdated = QDateTime::currentDateTimeUtc();
+    controller.updateStatus(unreachableStatus);
+    REQUIRE(iconImage(trayIcon->icon()) == iconImage(QIcon(":/icons/tunlet-error.svg")));
 }
