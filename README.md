@@ -58,7 +58,7 @@ Override at runtime:
 ./build/tunlet --config /path/to/config.yaml
 ```
 
-An example configuration is provided at [config/config.example.yaml](/work/tunlet/config/config.example.yaml).
+An example configuration is provided at [config/config.example.yaml](config/config.example.yaml).
 
 ### Config overview
 
