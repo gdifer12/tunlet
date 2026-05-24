@@ -176,7 +176,7 @@ If `logging.rotation.enabled` is `true`, both `rotation.maxFileBytes` and `rotat
 - `src/theme`: built-in theme token/template loading and external theme overrides
 - `tests`: unit tests
 
-Theme editing details are documented in [docs/theme.md](/work/tunlet/docs/theme.md).
+Theme editing details are documented in [docs/theme.md](docs/theme.md).
 
 ## Known assumptions
 
