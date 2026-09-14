@@ -1151,6 +1151,13 @@ QWidget *MainWindow::buildDashboardPage() {
     actionRow->addWidget(m_refreshLocationDataButton);
     actionRow->addStretch(1);
     selectorLayout->addWidget(actionRowWidget);
+    m_selectorCardRows = {
+        selectorHead,
+        selectorTriggerRowWidget,
+        modeSummaryRow,
+        bannerRowWidget,
+        actionRowWidget,
+    };
     pageLayout->addWidget(selectorCard);
     QTimer::singleShot(0, this, [this]() {
         updateSelectorCardHeight();
@@ -1784,7 +1791,25 @@ void MainWindow::updateSelectorCardHeight() {
         return;
     }
 
+    for (const auto &rowPointer : m_selectorCardRows) {
+        QWidget *row = rowPointer.data();
+        if (!row || !row->layout() || row->width() <= 0) {
+            continue;
+        }
+
+        QLayout *rowLayout = row->layout();
+        const int preferredRowHeight = rowLayout->hasHeightForWidth()
+                                           ? rowLayout->heightForWidth(row->width())
+                                           : rowLayout->sizeHint().height();
+        const int compactRowHeight = qMax(preferredRowHeight, rowLayout->minimumSize().height());
+        if (row->maximumHeight() != compactRowHeight) {
+            row->setMaximumHeight(compactRowHeight);
+            row->updateGeometry();
+        }
+    }
+
     auto *layout = m_selectorCard->layout();
+    layout->invalidate();
     const int preferredHeight = layout->hasHeightForWidth()
                                     ? layout->heightForWidth(m_selectorCard->width())
                                     : layout->sizeHint().height();

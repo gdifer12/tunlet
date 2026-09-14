@@ -172,6 +172,7 @@ private:
 
     QLabel *m_mainPanelStatusLabel = nullptr;
     QWidget *m_selectorCard = nullptr;
+    QVector<QPointer<QWidget>> m_selectorCardRows;
     QLabel *m_currentProfileLabel = nullptr;
     QLabel *m_modeChipLabel = nullptr;
     QLabel *m_profileDescriptionLabel = nullptr;
