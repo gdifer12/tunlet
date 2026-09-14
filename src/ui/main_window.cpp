@@ -507,12 +507,17 @@ MainWindow::MainWindow(const config::AppConfig &config,
     populateRuleFiles();
 
     connect(m_modeController, &clash::ModeController::statusUpdated, this, &MainWindow::onStatusUpdated);
-    connect(m_modeController, &clash::ModeController::profilesUpdated, this, [this](const QVector<config::ClashModeProfile> &) {
+    connect(m_modeController, &clash::ModeController::profilesUpdated, this, [this](const QVector<clash::ModeOption> &) {
         populateModeProfiles();
         updateModeSelectionUi();
     });
-    connect(m_modeController, &clash::ModeController::operationFailed, this, [this](const QString &message) {
+    connect(m_modeController, &clash::ModeController::modeOperationFailed, this, [this](const QString &message) {
         setModeBanner("Mode switch failed", message, "danger");
+        showActionMessage(message, 5000);
+        updateDashboardCards();
+    });
+    connect(m_modeController, &clash::ModeController::proxyOperationFailed, this, [this](const QString &message) {
+        setProxyBanner("Proxy switch failed", message, "danger");
         showActionMessage(message, 5000);
         updateDashboardCards();
     });
@@ -974,6 +979,10 @@ QWidget *MainWindow::buildDashboardPage() {
     selectorHeadLayout->addWidget(selectorNote, 0, Qt::AlignTop);
     selectorLayout->addWidget(selectorHead);
 
+    auto *selectorTriggerRow = new QHBoxLayout();
+    selectorTriggerRow->setContentsMargins(0, 0, 0, 0);
+    selectorTriggerRow->setSpacing(10);
+
     m_modeTriggerButton = new QPushButton(selectorCard);
     m_modeTriggerButton->setObjectName("selectorTrigger");
     m_modeTriggerButton->setProperty("open", false);
@@ -999,16 +1008,52 @@ QWidget *MainWindow::buildDashboardPage() {
     m_modeTriggerCaretLabel->setObjectName("selectorTriggerCaret");
     modeTriggerLayout->addWidget(m_modeTriggerCaretLabel, 0, Qt::AlignCenter);
     connect(m_modeTriggerButton, &QPushButton::clicked, this, &MainWindow::openModePopup);
-    selectorLayout->addWidget(m_modeTriggerButton);
+    selectorTriggerRow->addWidget(m_modeTriggerButton, 1);
     m_currentProfileLabel = m_modeTriggerValueLabel;
     m_profileDescriptionLabel = m_modeTriggerSubLabel;
 
-    auto *modeSummaryGrid = new QGridLayout();
-    modeSummaryGrid->setHorizontalSpacing(10);
-    modeSummaryGrid->setVerticalSpacing(6);
-    modeSummaryGrid->addWidget(buildSummaryItem(selectorCard, "Selected profile", &m_selectedProfileValue, &m_selectedProfileDetail), 0, 0);
-    modeSummaryGrid->addWidget(buildSummaryItem(selectorCard, "Last reload", &m_lastReloadValue, &m_lastReloadDetail), 0, 1);
+    m_proxyTriggerButton = new QPushButton(selectorCard);
+    m_proxyTriggerButton->setObjectName("selectorTrigger");
+    m_proxyTriggerButton->setProperty("open", false);
+    m_proxyTriggerButton->setMinimumHeight(72);
+    m_proxyTriggerButton->setCursor(Qt::PointingHandCursor);
+    auto *proxyTriggerLayout = new QHBoxLayout(m_proxyTriggerButton);
+    proxyTriggerLayout->setContentsMargins(14, 8, 14, 8);
+    proxyTriggerLayout->setSpacing(12);
+    auto *proxyTriggerCopy = new QVBoxLayout();
+    proxyTriggerCopy->setSpacing(2);
+    auto *proxyTriggerKey = new QLabel("Current proxy", m_proxyTriggerButton);
+    proxyTriggerKey->setObjectName("summaryKey");
+    m_proxyTriggerValueLabel = new QLabel("Unknown", m_proxyTriggerButton);
+    m_proxyTriggerValueLabel->setObjectName("selectorTriggerValue");
+    m_proxyTriggerSubLabel = new QLabel("Choose an outbound for the configured selector.", m_proxyTriggerButton);
+    m_proxyTriggerSubLabel->setObjectName("selectorTriggerSub");
+    m_proxyTriggerSubLabel->setWordWrap(true);
+    proxyTriggerCopy->addWidget(proxyTriggerKey);
+    proxyTriggerCopy->addWidget(m_proxyTriggerValueLabel);
+    proxyTriggerCopy->addWidget(m_proxyTriggerSubLabel);
+    proxyTriggerLayout->addLayout(proxyTriggerCopy, 1);
+    m_proxyTriggerCaretLabel = new QLabel("▾", m_proxyTriggerButton);
+    m_proxyTriggerCaretLabel->setObjectName("selectorTriggerCaret");
+    proxyTriggerLayout->addWidget(m_proxyTriggerCaretLabel, 0, Qt::AlignCenter);
+    connect(m_proxyTriggerButton, &QPushButton::clicked, this, &MainWindow::openProxyPopup);
+    selectorTriggerRow->addWidget(m_proxyTriggerButton, 1);
+    selectorLayout->addLayout(selectorTriggerRow);
+
+    auto *modeSummaryGrid = new QHBoxLayout();
+    modeSummaryGrid->setContentsMargins(0, 0, 0, 0);
+    modeSummaryGrid->setSpacing(10);
+    modeSummaryGrid->addWidget(
+        buildSummaryItem(selectorCard, "Selected profile", &m_selectedProfileValue, &m_selectedProfileDetail),
+        1);
+    m_selectedProxySummaryItem = buildSummaryItem(selectorCard, "Selected proxy", &m_selectedProxyValue, &m_selectedProxyDetail);
+    modeSummaryGrid->addWidget(m_selectedProxySummaryItem, 1);
+    modeSummaryGrid->addWidget(buildSummaryItem(selectorCard, "Last reload", &m_lastReloadValue, &m_lastReloadDetail), 1);
     selectorLayout->addLayout(modeSummaryGrid);
+
+    auto *bannerRow = new QHBoxLayout();
+    bannerRow->setContentsMargins(0, 0, 0, 0);
+    bannerRow->setSpacing(10);
 
     auto *modeBanner = new QWidget(selectorCard);
     modeBanner->setObjectName("editorBanner");
@@ -1029,7 +1074,29 @@ QWidget *MainWindow::buildDashboardPage() {
     m_modeBannerStateLabel = new QLabel(modeBanner);
     m_modeBannerStateLabel->setObjectName("statusPill");
     modeBannerLayout->addWidget(m_modeBannerStateLabel, 0, Qt::AlignTop);
-    selectorLayout->addWidget(modeBanner);
+    bannerRow->addWidget(modeBanner, 1);
+
+    m_proxyBanner = new QWidget(selectorCard);
+    m_proxyBanner->setObjectName("editorBanner");
+    m_proxyBanner->setProperty("tone", "neutral");
+    auto *proxyBannerLayout = new QHBoxLayout(m_proxyBanner);
+    proxyBannerLayout->setContentsMargins(14, 12, 14, 12);
+    proxyBannerLayout->setSpacing(12);
+    auto *proxyBannerCopy = new QVBoxLayout();
+    proxyBannerCopy->setSpacing(4);
+    m_proxyBannerTitleLabel = new QLabel("Proxy synchronized", m_proxyBanner);
+    m_proxyBannerTitleLabel->setObjectName("bannerTitle");
+    m_proxyBannerMessageLabel = new QLabel("Visible proxy selection matches the backend state.", m_proxyBanner);
+    m_proxyBannerMessageLabel->setObjectName("bannerMessage");
+    m_proxyBannerMessageLabel->setWordWrap(true);
+    proxyBannerCopy->addWidget(m_proxyBannerTitleLabel);
+    proxyBannerCopy->addWidget(m_proxyBannerMessageLabel);
+    proxyBannerLayout->addLayout(proxyBannerCopy, 1);
+    m_proxyBannerStateLabel = new QLabel(m_proxyBanner);
+    m_proxyBannerStateLabel->setObjectName("statusPill");
+    proxyBannerLayout->addWidget(m_proxyBannerStateLabel, 0, Qt::AlignTop);
+    bannerRow->addWidget(m_proxyBanner, 1);
+    selectorLayout->addLayout(bannerRow);
 
     auto *actionRow = new QHBoxLayout();
     actionRow->setSpacing(10);
@@ -1361,6 +1428,8 @@ QWidget *MainWindow::buildSettingsInfoPage() {
     m_stateLocationRefreshValue = buildKeyValueRow(stateGrid, 9, "Next refresh", stateCard);
     m_stateTrafficValue = buildKeyValueRow(stateGrid, 10, "Traffic", stateCard);
     m_stateModeListValue = buildKeyValueRow(stateGrid, 11, "Supported modes", stateCard);
+    m_stateCurrentProxyValue = buildKeyValueRow(stateGrid, 12, "Current proxy", stateCard);
+    m_stateProxyListValue = buildKeyValueRow(stateGrid, 13, "Available proxies", stateCard);
     stateLayout->addLayout(stateGrid);
     pageLayout->addWidget(stateCard);
 
@@ -1496,6 +1565,7 @@ void MainWindow::applyConfig(const config::AppConfig &config) {
     updateFooterIpContentWidth();
     rebuildShortcuts();
     populateModeProfiles();
+    updateProxySelectionUi();
     populateRuleFiles();
     refreshAppConfigPathLabel();
     updateDashboardCards();
@@ -1548,18 +1618,18 @@ void MainWindow::populateRuleFiles() {
     }
 }
 
-void MainWindow::setSelectedProfileName(const QString &profileName) {
-    if (!profileName.isEmpty() && !hasProfile(profileName)) {
+void MainWindow::setSelectedProfileName(const QString &optionId) {
+    if (!optionId.isEmpty() && !hasProfile(optionId)) {
         return;
     }
 
-    m_selectedProfileName = profileName;
+    m_selectedProfileName = optionId;
     updateModeSelectionUi();
 }
 
-bool MainWindow::hasProfile(const QString &profileName) const {
+bool MainWindow::hasProfile(const QString &optionId) const {
     for (const auto &profile : m_modeController->profiles()) {
-        if (profile.name == profileName) {
+        if (profile.id == optionId) {
             return true;
         }
     }
@@ -1568,6 +1638,15 @@ bool MainWindow::hasProfile(const QString &profileName) const {
 
 QString MainWindow::selectedModeProfileName() const {
     return m_selectedProfileName;
+}
+
+const clash::ModeOption *MainWindow::selectedModeOption() const {
+    for (const auto &profile : m_modeController->profiles()) {
+        if (profile.id == m_selectedProfileName) {
+            return &profile;
+        }
+    }
+    return nullptr;
 }
 
 const MainWindow::NamedRuleFile *MainWindow::selectedRuleFile() const {
@@ -1586,13 +1665,15 @@ const MainWindow::NamedRuleFile *MainWindow::selectedRuleFile() const {
 
 void MainWindow::updateModeSelectionUi() {
     QString profileDescription = m_modeController->profiles().isEmpty()
-                                     ? QString("No mode profiles configured. Add entries in config.yaml.")
+                                     ? QString("No supported modes reported by the backend.")
                                      : QString("Choose a profile to switch immediately.");
     QString targetModeValue;
+    QString selectedDisplayName;
 
     for (const auto &profile : m_modeController->profiles()) {
-        if (profile.name == m_selectedProfileName) {
+        if (profile.id == m_selectedProfileName) {
             targetModeValue = profile.mode;
+            selectedDisplayName = profile.name;
             profileDescription = profile.desc.isEmpty()
                                      ? QString("Switches to backend mode '%1'.").arg(profile.mode)
                                      : QString("%1\nBackend mode: %2").arg(profile.desc, profile.mode);
@@ -1607,14 +1688,56 @@ void MainWindow::updateModeSelectionUi() {
     if (m_modeTriggerValueLabel) {
         const QString displayName = m_selectedProfileName.isEmpty()
                                         ? (m_modeController->profiles().isEmpty() ? QString("No profiles") : QString("Unknown"))
-                                        : displayModeName(m_selectedProfileName);
+                                        : displayModeName(selectedDisplayName);
         m_modeTriggerValueLabel->setText(displayName);
     }
     if (m_profileDescriptionLabel) {
         m_profileDescriptionLabel->setText(profileDescription);
     }
     if (m_modeTriggerButton) {
-        m_modeTriggerButton->setEnabled(!m_modeController->profiles().isEmpty() && !m_lastStatus.busy);
+        m_modeTriggerButton->setEnabled(!m_modeController->profiles().isEmpty() && !m_lastStatus.busy &&
+                                        !m_lastStatus.proxySelector.busy);
+    }
+}
+
+void MainWindow::updateProxySelectionUi() {
+    const auto &proxy = m_lastStatus.proxySelector;
+    const bool visible = m_config.clashApi.editProxySelector;
+
+    if (m_proxyTriggerButton) {
+        m_proxyTriggerButton->setVisible(visible);
+        m_proxyTriggerButton->setEnabled(visible && proxy.reachable && !m_lastStatus.busy && !proxy.busy &&
+                                         !proxy.availableProxies.isEmpty());
+    }
+    if (m_selectedProxySummaryItem) {
+        m_selectedProxySummaryItem->setVisible(visible);
+    }
+    if (m_proxyBanner) {
+        m_proxyBanner->setVisible(visible);
+    }
+    if (!visible) {
+        if (m_selectorPopupTrigger == m_proxyTriggerButton) {
+            closeSelectorPopup();
+        }
+        return;
+    }
+
+    if (m_proxyTriggerValueLabel) {
+        m_proxyTriggerValueLabel->setText(proxy.currentProxy.isEmpty() ? QString("Unknown") : proxy.currentProxy);
+        setLabelStale(m_proxyTriggerValueLabel, proxy.stale);
+    }
+    if (m_proxyTriggerSubLabel) {
+        const QString text = proxy.busy
+                                 ? QString("Refreshing selector '%1'.").arg(proxy.selectorName)
+                                 : !proxy.reachable
+                                       ? (proxy.stale ? QString("Last known value; selector refresh failed.")
+                                                      : QString("Selector '%1' is unavailable.").arg(proxy.selectorName))
+                                       : QString("%1 available outbound%2 in '%3'.")
+                                             .arg(proxy.availableProxies.size())
+                                             .arg(proxy.availableProxies.size() == 1 ? QString{} : QString("s"))
+                                             .arg(proxy.selectorName);
+        m_proxyTriggerSubLabel->setText(text);
+        setLabelStale(m_proxyTriggerSubLabel, proxy.stale);
     }
 }
 
@@ -1731,7 +1854,8 @@ void MainWindow::closeSelectorPopup() {
 }
 
 void MainWindow::openModePopup() {
-    if (!m_modeTriggerButton || m_modeController->profiles().isEmpty() || m_lastStatus.busy) {
+    if (!m_modeTriggerButton || m_modeController->profiles().isEmpty() || m_lastStatus.busy ||
+        m_lastStatus.proxySelector.busy) {
         return;
     }
 
@@ -1757,7 +1881,7 @@ void MainWindow::openModePopup() {
         const auto &profile = m_modeController->profiles().at(index);
         auto *button = new QPushButton(popup);
         button->setObjectName("selectorOption");
-        button->setProperty("active", profile.name == m_selectedProfileName);
+        button->setProperty("active", profile.id == m_selectedProfileName);
         button->setCursor(Qt::PointingHandCursor);
         button->setMinimumHeight(64);
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -1779,15 +1903,15 @@ void MainWindow::openModePopup() {
         buttonLayout->addWidget(subtitle);
         buttonLayout->addWidget(meta);
 
-        connect(button, &QPushButton::clicked, this, [this, profileName = profile.name]() {
+        connect(button, &QPushButton::clicked, this, [this, optionId = profile.id]() {
             closeSelectorPopup();
-            setSelectedProfileName(profileName);
-            if (!m_lastStatus.busy && profileName != m_lastStatus.currentProfileName) {
+            setSelectedProfileName(optionId);
+            if (!m_lastStatus.busy && optionId != m_lastStatus.currentProfileId) {
                 applySelectedModeProfile();
             }
         });
 
-        if (profile.name == m_selectedProfileName) {
+        if (profile.id == m_selectedProfileName) {
             activeIndex = index;
         }
 
@@ -1806,6 +1930,109 @@ void MainWindow::openModePopup() {
     if (!buttons.isEmpty()) {
         QTimer::singleShot(0, buttons.at(qBound(0, activeIndex, buttons.size() - 1)), [buttons, activeIndex]() {
             buttons.at(qBound(0, activeIndex, buttons.size() - 1))->setFocus();
+        });
+    }
+}
+
+void MainWindow::openProxyPopup() {
+    const auto &proxy = m_lastStatus.proxySelector;
+    if (!m_proxyTriggerButton || !m_config.clashApi.editProxySelector || !proxy.reachable ||
+        m_lastStatus.busy || proxy.busy ||
+        proxy.availableProxies.isEmpty()) {
+        return;
+    }
+
+    if (m_selectorPopup && m_selectorPopupTrigger == m_proxyTriggerButton) {
+        closeSelectorPopup();
+        return;
+    }
+
+    closeSelectorPopup();
+
+    auto *popup = new QFrame(this, Qt::Popup | Qt::FramelessWindowHint);
+    popup->setObjectName("selectorPopup");
+    popup->setFocusPolicy(Qt::StrongFocus);
+    popup->installEventFilter(this);
+
+    auto *popupLayout = new QVBoxLayout(popup);
+    popupLayout->setContentsMargins(8, 8, 8, 8);
+    popupLayout->setSpacing(0);
+
+    auto *scrollArea = new QScrollArea(popup);
+    scrollArea->setObjectName("selectorPopupScroll");
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setMaximumHeight(420);
+
+    auto *optionsWidget = new QWidget(scrollArea);
+    optionsWidget->setObjectName("selectorPopupOptions");
+    auto *layout = new QVBoxLayout(optionsWidget);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(6);
+    layout->setSizeConstraint(QLayout::SetMinimumSize);
+
+    int activeIndex = 0;
+    QVector<QPointer<QAbstractButton>> buttons;
+    for (int index = 0; index < proxy.availableProxies.size(); ++index) {
+        const QString proxyName = proxy.availableProxies.at(index);
+        auto *button = new QPushButton(optionsWidget);
+        button->setObjectName("selectorOption");
+        button->setProperty("active", proxyName == proxy.currentProxy);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setMinimumHeight(64);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        button->installEventFilter(this);
+
+        auto *buttonLayout = new QVBoxLayout(button);
+        buttonLayout->setContentsMargins(12, 10, 12, 10);
+        buttonLayout->setSpacing(2);
+        buttonLayout->setSizeConstraint(QLayout::SetMinimumSize);
+
+        auto *title = new QLabel(proxyName, button);
+        title->setObjectName("selectorOptionTitle");
+        auto *subtitle = new QLabel(QString("Outbound in selector '%1'").arg(proxy.selectorName), button);
+        subtitle->setObjectName("selectorOptionSub");
+        auto *meta = new QLabel(proxyName == proxy.currentProxy ? "Current outbound" : "Available outbound", button);
+        meta->setObjectName("selectorOptionMeta");
+        buttonLayout->addWidget(title);
+        buttonLayout->addWidget(subtitle);
+        buttonLayout->addWidget(meta);
+
+        connect(button, &QPushButton::clicked, this, [this, proxyName]() {
+            closeSelectorPopup();
+            if (!m_lastStatus.proxySelector.busy && proxyName != m_lastStatus.proxySelector.currentProxy) {
+                m_modeController->switchProxy(proxyName);
+                showActionMessage(QString("Switching proxy to %1").arg(proxyName), 3000);
+            }
+        });
+
+        if (proxyName == proxy.currentProxy) {
+            activeIndex = index;
+        }
+        layout->addWidget(button);
+        buttons.push_back(button);
+    }
+    scrollArea->setWidget(optionsWidget);
+    scrollArea->setMinimumHeight(qMin(420, optionsWidget->sizeHint().height()));
+    popupLayout->addWidget(scrollArea);
+
+    m_selectorPopup = popup;
+    m_selectorPopupTrigger = m_proxyTriggerButton;
+    m_selectorPopupTrigger->setProperty("open", true);
+    repolish(m_selectorPopupTrigger);
+    popup->show();
+    positionSelectorPopup(m_proxyTriggerButton);
+
+    if (!buttons.isEmpty()) {
+        const int focusedIndex = qBound(0, activeIndex, buttons.size() - 1);
+        QTimer::singleShot(0, buttons.at(focusedIndex), [buttons, focusedIndex, scrollArea]() {
+            if (!buttons.at(focusedIndex)) {
+                return;
+            }
+            buttons.at(focusedIndex)->setFocus();
+            scrollArea->ensureWidgetVisible(buttons.at(focusedIndex));
         });
     }
 }
@@ -2053,6 +2280,22 @@ void MainWindow::setModeBanner(const QString &title, const QString &message, con
     }
 }
 
+void MainWindow::setProxyBanner(const QString &title, const QString &message, const QString &tone) {
+    if (m_proxyBannerTitleLabel) {
+        m_proxyBannerTitleLabel->setText(title);
+    }
+    if (m_proxyBannerMessageLabel) {
+        m_proxyBannerMessageLabel->setText(message);
+    }
+    setStatusPill(m_proxyBannerStateLabel,
+                  tone == "danger" ? "Error" : tone == "warn" ? "Attention" : tone == "ok" ? "Live" : "Synced",
+                  tone);
+    if (m_proxyBanner) {
+        m_proxyBanner->setProperty("tone", tone);
+        repolish(m_proxyBanner);
+    }
+}
+
 void MainWindow::setSettingsBanner(const QString &text, const QString &tone) {
     if (m_settingsStatusLabel) {
         m_settingsStatusLabel->setText(text);
@@ -2081,7 +2324,7 @@ void MainWindow::setLabelStale(QLabel *label, bool stale) {
 
 void MainWindow::updateRuntimeActionButtons() {
     const bool runtimeRefreshInFlight = m_lastDiagnostics.runtimeRefreshInFlight;
-    const bool combinedRuntimeBusy = runtimeRefreshInFlight || m_lastStatus.busy;
+    const bool combinedRuntimeBusy = runtimeRefreshInFlight || m_lastStatus.busy || m_lastStatus.proxySelector.busy;
     const bool locationRefreshInFlight = m_lastDiagnostics.locationRefreshInFlight;
 
     if (m_footerRecheckButton) {
@@ -2188,6 +2431,10 @@ void MainWindow::rebuildShortcuts() {
     registerShortcut(shortcuts.openModeSelector, [this]() {
         setCurrentPage(kDashboardPageIndex);
         openModePopup();
+    }, false);
+    registerShortcut(shortcuts.openProxySelector, [this]() {
+        setCurrentPage(kDashboardPageIndex);
+        openProxyPopup();
     }, false);
     registerShortcut(shortcuts.openRuleFileSelector, [this]() {
         setCurrentPage(kRulesPageIndex);
@@ -2321,8 +2568,12 @@ void MainWindow::updateDashboardCards() {
     const QString endpoint = m_lastStatus.endpointLabel.isEmpty() ? endpointLabelForConfig(m_config) : m_lastStatus.endpointLabel;
     const QString activeProfile = m_lastStatus.currentProfileName.isEmpty() ? "unknown" : m_lastStatus.currentProfileName;
     const QString rawMode = m_lastStatus.currentModeValue.isEmpty() ? "unknown" : m_lastStatus.currentModeValue;
+    const clash::ModeOption *selectedOption = selectedModeOption();
+    const QString selectedProfile = selectedOption ? selectedOption->name : activeProfile;
+    const auto &proxy = m_lastStatus.proxySelector;
+    const QString currentProxy = proxy.currentProxy.isEmpty() ? QString("Unknown") : proxy.currentProxy;
     const bool reachable = m_lastStatus.reachable;
-    const bool busy = m_lastStatus.busy;
+    const bool busy = m_lastStatus.busy || proxy.busy;
     const bool runtimeRefreshInFlight = m_lastDiagnostics.runtimeRefreshInFlight;
     const bool runtimeDiagnosticsStale = m_lastDiagnostics.runtimeDiagnosticsStale;
     const QString tone = busy ? "neutral" : reachable ? "ok" : "warn";
@@ -2426,10 +2677,18 @@ void MainWindow::updateDashboardCards() {
         m_stateModeDetail->setText(QString("Backend mode: %1").arg(rawMode));
     }
     if (m_selectedProfileValue) {
-        m_selectedProfileValue->setText(displayModeName(m_selectedProfileName.isEmpty() ? activeProfile : m_selectedProfileName));
+        m_selectedProfileValue->setText(displayModeName(selectedProfile));
     }
     if (m_selectedProfileDetail) {
         m_selectedProfileDetail->setText("Current path chosen by controller");
+    }
+    if (m_selectedProxyValue) {
+        m_selectedProxyValue->setText(currentProxy);
+        setLabelStale(m_selectedProxyValue, proxy.stale);
+    }
+    if (m_selectedProxyDetail) {
+        m_selectedProxyDetail->setText(QString("Selector: %1").arg(proxy.selectorName));
+        setLabelStale(m_selectedProxyDetail, proxy.stale);
     }
     if (m_lastReloadValue) {
         m_lastReloadValue->setText(refreshText);
@@ -2592,6 +2851,16 @@ void MainWindow::updateDashboardCards() {
     if (m_stateModeListValue) {
         m_stateModeListValue->setText(joinOrUnknown(m_lastStatus.supportedModes));
     }
+    if (m_stateCurrentProxyValue) {
+        m_stateCurrentProxyValue->setText(m_config.clashApi.editProxySelector ? currentProxy : QString("Disabled"));
+        setLabelStale(m_stateCurrentProxyValue, proxy.stale);
+    }
+    if (m_stateProxyListValue) {
+        m_stateProxyListValue->setText(m_config.clashApi.editProxySelector
+                                           ? joinOrUnknown(proxy.availableProxies)
+                                           : QString("Disabled"));
+        setLabelStale(m_stateProxyListValue, proxy.stale);
+    }
 
     if (m_footerLatencyValue) {
         m_footerLatencyValue->setText(delayText);
@@ -2640,6 +2909,7 @@ void MainWindow::updateDashboardCards() {
     updateRuntimeActionButtons();
     updateFooterIpContentWidth();
     updateModeSelectionUi();
+    updateProxySelectionUi();
 }
 
 void MainWindow::onStatusUpdated(const clash::ModeStatus &status) {
@@ -2660,6 +2930,17 @@ void MainWindow::onStatusUpdated(const clash::ModeStatus &status) {
             }
         } else if (!status.detail.trimmed().isEmpty() && status.detail != "Not refreshed yet") {
             setModeBanner("Mode sync issue", status.detail, "warn");
+        }
+    }
+    if (status.proxySelector.enabled && !status.proxySelector.busy) {
+        if (status.proxySelector.reachable && !status.proxySelector.currentProxy.isEmpty()) {
+            setProxyBanner("Proxy synchronized",
+                           QString("Selector '%1' uses '%2'.")
+                               .arg(status.proxySelector.selectorName, status.proxySelector.currentProxy),
+                           "neutral");
+        } else if (!status.proxySelector.detail.trimmed().isEmpty() &&
+                   status.proxySelector.detail != "Not refreshed yet") {
+            setProxyBanner("Proxy sync issue", status.proxySelector.detail, "warn");
         }
     }
     updateDashboardCards();
@@ -2831,10 +3112,11 @@ void MainWindow::reloadCurrentRuleFile() {
 }
 
 void MainWindow::applySelectedModeProfile() {
-    const QString name = selectedModeProfileName();
-    if (!name.isEmpty()) {
-        m_modeController->switchMode(name);
-        showActionMessage(QString("Switching to %1").arg(displayModeName(name)), 3000);
+    const QString optionId = selectedModeProfileName();
+    const clash::ModeOption *option = selectedModeOption();
+    if (!optionId.isEmpty() && option) {
+        m_modeController->switchMode(optionId);
+        showActionMessage(QString("Switching to %1").arg(displayModeName(option->name)), 3000);
     }
 }
 

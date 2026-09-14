@@ -97,6 +97,7 @@ private:
     void populateModeProfiles();
     void updateDashboardCards();
     void updateModeSelectionUi();
+    void updateProxySelectionUi();
     void updateWindowSizeLabel();
     void updateRuleLineNumbers();
     void updateRuleEditorErrorHighlight();
@@ -106,6 +107,7 @@ private:
     void refreshAppConfigPathLabel();
     void closeSelectorPopup();
     void openModePopup();
+    void openProxyPopup();
     void openRuleFilePopup();
     void positionSelectorPopup(QWidget *trigger);
     RuleFileUiStatus ruleFileStatusForText(const QString &text, const QString &loadedText) const;
@@ -117,6 +119,7 @@ private:
     void showActionMessage(const QString &message, int timeoutMs = 0);
     void setStatusPill(QLabel *label, const QString &text, const QString &tone);
     void setModeBanner(const QString &title, const QString &message, const QString &tone);
+    void setProxyBanner(const QString &title, const QString &message, const QString &tone);
     void setRuleBanner(const QString &title, const QString &message, const QString &tone);
     void setSettingsBanner(const QString &text, const QString &tone);
     void setLabelTone(QLabel *label, const QString &tone);
@@ -134,9 +137,10 @@ private:
     void closeWindowFromShortcut(bool allowWhenEditorFocused);
     bool isTextEditorFocused() const;
     void setCurrentPage(int index);
-    void setSelectedProfileName(const QString &profileName);
-    bool hasProfile(const QString &profileName) const;
+    void setSelectedProfileName(const QString &optionId);
+    bool hasProfile(const QString &optionId) const;
     QString selectedModeProfileName() const;
+    const clash::ModeOption *selectedModeOption() const;
     const NamedRuleFile *selectedRuleFile() const;
 
     config::AppConfig m_config;
@@ -175,11 +179,16 @@ private:
     QLabel *m_stateModeDetail = nullptr;
     QLabel *m_selectedProfileValue = nullptr;
     QLabel *m_selectedProfileDetail = nullptr;
+    QLabel *m_selectedProxyValue = nullptr;
+    QLabel *m_selectedProxyDetail = nullptr;
     QLabel *m_lastReloadValue = nullptr;
     QLabel *m_lastReloadDetail = nullptr;
     QLabel *m_modeBannerTitleLabel = nullptr;
     QLabel *m_modeBannerMessageLabel = nullptr;
     QLabel *m_modeBannerStateLabel = nullptr;
+    QLabel *m_proxyBannerTitleLabel = nullptr;
+    QLabel *m_proxyBannerMessageLabel = nullptr;
+    QLabel *m_proxyBannerStateLabel = nullptr;
     QLabel *m_connectionEndpointValue = nullptr;
     QLabel *m_connectionDiagnosticsValue = nullptr;
     QLabel *m_connectionDelayDnsValue = nullptr;
@@ -196,6 +205,12 @@ private:
     QLabel *m_modeTriggerValueLabel = nullptr;
     QLabel *m_modeTriggerSubLabel = nullptr;
     QLabel *m_modeTriggerCaretLabel = nullptr;
+    QPushButton *m_proxyTriggerButton = nullptr;
+    QLabel *m_proxyTriggerValueLabel = nullptr;
+    QLabel *m_proxyTriggerSubLabel = nullptr;
+    QLabel *m_proxyTriggerCaretLabel = nullptr;
+    QWidget *m_selectedProxySummaryItem = nullptr;
+    QWidget *m_proxyBanner = nullptr;
     QPushButton *m_reloadConfigButton = nullptr;
     QPushButton *m_refreshRuntimeButton = nullptr;
     QPushButton *m_settingsReloadButton = nullptr;
@@ -245,6 +260,8 @@ private:
     QLabel *m_stateLocationRefreshValue = nullptr;
     QLabel *m_stateTrafficValue = nullptr;
     QLabel *m_stateModeListValue = nullptr;
+    QLabel *m_stateCurrentProxyValue = nullptr;
+    QLabel *m_stateProxyListValue = nullptr;
     QLabel *m_appConfigPathLabel = nullptr;
     QLabel *m_settingsStatusLabel = nullptr;
     QPlainTextEdit *m_settingsEditor = nullptr;

@@ -6,8 +6,9 @@ It is intentionally not a VPN manager, service manager, config generator, or net
 
 ## Features
 
-- Single Clash API endpoint with built-in logical `direct`, `proxy`, and `auto` profiles by default
-- Additional named mode profiles configurable in YAML
+- Single Clash API endpoint with built-in logical `direct`, `proxy`, and `auto` profiles matched against the runtime `mode-list`
+- Additional named mode profiles plus optional exposure of every backend-reported mode
+- Optional Main-page outbound selector backed by the Clash `/proxies/{selector}` API
 - Optional background current-mode synchronization against the Clash API
 - Tray menu for quick switching and background runtime refresh
 - Compact main window for control, diagnostics, and JSON rule-set editing
@@ -143,6 +144,10 @@ Each extra profile may define:
 - `mode`
 - `desc`
 
+The mode dropdown is derived from the latest successful `mode-list` returned by `GET /configs`. Configured profiles whose backend `mode` is supported are shown first. `clashApi.displayAllModes` defaults to `true` and appends any remaining runtime modes in API order; with `false`, only matching configured profiles are shown. A transient refresh failure keeps the last successfully loaded list, while changing the API endpoint clears it until the new endpoint responds.
+
+`clashApi.editProxySelector` controls the optional proxy dropdown on the Main page and defaults to `true`. When enabled, `clashApi.proxySelector` names the sing-box selector outbound, `proxy` by default. Tunlet reads its current selection and available outbounds through `GET /proxies/{selector}` and applies a choice through `PUT /proxies/{selector}`. The default shortcut for opening this dropdown is `N` (`ui.keyboard.shortcuts.openProxySelector`). A confirmed proxy change automatically refreshes IP, delay, DNS, and location state because the effective connection may have changed.
+
 `clashApi.modeSyncIntervalMs` controls how often tunlet re-reads the current backend mode from the Clash API in the background. Use `0` to disable background mode sync.
 
 This avoids hardcoding the complete list of supported mode values in the UI.
@@ -180,10 +185,10 @@ If `logging.rotation.enabled` is `true`, both `rotation.maxFileBytes` and `rotat
 
 - `textSelection.enableInformationalLabels`: when `true`, most informational labels in the UI can be selected and copied with the mouse
 - `windowActivation.mode`: `auto`, `portable`, or `hyprland`; `auto` tries Hyprland workspace-aware window routing first and falls back to portable behavior
-- `keyboard.shortcuts.*`: Qt key-sequence strings for close, page navigation, selector opening, refresh, validate, save, and reload actions
+- `keyboard.shortcuts.*`: Qt key-sequence strings for close, page navigation, mode/proxy selector opening, refresh, validate, save, and reload actions
 - any shortcut entry may be set to an empty string to disable that binding
 
-`Save and apply` and `Reload` on the `Settings / Info` page re-apply runtime configuration without restarting the process. This includes logging level and sink paths, plus `ui.windowActivation.mode`. `tray.startHidden` is the exception: it is stored immediately but only affects the next launch.
+`Save and apply` and `Reload` on the `Settings / Info` page re-apply runtime configuration without restarting the process. This includes mode-list filtering, proxy selector visibility/name, shortcuts, logging level and sink paths, plus `ui.windowActivation.mode`. `tray.startHidden` is the exception: it is stored immediately but only affects the next launch.
 
 ## MVP behavior
 
@@ -199,8 +204,8 @@ If `logging.rotation.enabled` is `true`, both `rotation.maxFileBytes` and `rotat
 - Window-open routing is config-driven: portable mode reuses the active tunlet window or opens a new one, while Hyprland mode can focus an existing tunlet window on the current workspace before falling back to opening a new one.
 - In Hyprland mode, shell-triggered opens use Hyprland IPC focus handoff so a repeated `tunlet` launch can transfer compositor focus to the selected tunlet window instead of relying only on `activateWindow()`.
 - Diagnostics logging records the actual runtime refresh cycle, including startup refresh, periodic refresh, tray refresh, config-apply refresh, and the final success or failure result for each cycle.
-- Additional profiles are listed and can be switched from the main window or tray menu.
-- The UI also shows the `mode-list` reported by `/configs`, so you can see which backend modes are actually available.
+- Supported configured profiles are listed first in the main window and tray; optional runtime-only modes follow in the order reported by `/configs`.
+- The optional proxy selector shows `now/all`, verifies each switch by rereading the selector, and keeps failures visible in its Main-page status banner.
 - Logging supports text and JSONL sinks simultaneously, applies sink/path/level/rotation changes live, and can stay append-only when rotation is disabled.
 - Rule-set files are edited as JSON text, validated before save, and written via safe-save semantics.
 - The YAML app config can be edited from the UI with validation and safe-save.
@@ -227,6 +232,7 @@ Theme editing details are documented in [docs/theme.md](docs/theme.md).
 ## Known assumptions
 
 - Clash-compatible mode switching happens through `PATCH /configs` with a configured `mode` value.
+- Selector outbound switching happens through `PUT /proxies/{selector}` with a `name` value and is verified through a subsequent GET.
 - By default, tunlet maps logical `direct/proxy/auto` to Clash `direct/global/rule` and writes the built-in Clash values as `Direct/Global/Rule`.
 - Those built-in profiles can be disabled through `clashApi.disableDefaultProfiles`, in which case only explicitly configured profiles are exposed.
 - The first version does not manage the `sing-box` process lifecycle.

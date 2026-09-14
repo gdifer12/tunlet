@@ -42,6 +42,23 @@ struct ModeSwitchResult {
     int httpStatus = 0;
 };
 
+struct ProxySelectorStateResult {
+    bool ok = false;
+    QString detail;
+    QString selectorName;
+    QString currentProxy;
+    QStringList availableProxies;
+    int httpStatus = 0;
+};
+
+struct ProxySwitchResult {
+    bool ok = false;
+    QString detail;
+    QString selectorName;
+    QString targetProxy;
+    int httpStatus = 0;
+};
+
 class ClashApiClient : public QObject {
     Q_OBJECT
 
@@ -53,12 +70,18 @@ public:
     void fetchTraffic(const config::ClashApiConfig &apiConfig);
     void fetchCurrentMode(const config::ClashApiConfig &apiConfig);
     void switchMode(const config::ClashApiConfig &apiConfig, const QString &targetMode);
+    void fetchProxySelector(const config::ClashApiConfig &apiConfig, const QString &selectorName);
+    void switchProxy(const config::ClashApiConfig &apiConfig,
+                     const QString &selectorName,
+                     const QString &targetProxy);
 
 signals:
     void healthCheckFinished(const tunlet::clash::HealthCheckResult &result);
     void trafficFinished(const tunlet::clash::TrafficResult &result);
     void modeStateFinished(const tunlet::clash::ModeStateResult &result);
     void modeSwitchFinished(const tunlet::clash::ModeSwitchResult &result);
+    void proxySelectorStateFinished(const tunlet::clash::ProxySelectorStateResult &result);
+    void proxySwitchFinished(const tunlet::clash::ProxySwitchResult &result);
 
 private:
     QUrl buildUrl(const config::ClashApiConfig &apiConfig, const QString &path) const;

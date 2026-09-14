@@ -31,6 +31,10 @@ double readFirstNumericField(const QJsonObject &object, std::initializer_list<co
     return -1.0;
 }
 
+QString proxySelectorPath(const QString &selectorName) {
+    return QString("/proxies/%1").arg(QString::fromLatin1(QUrl::toPercentEncoding(selectorName.trimmed())));
+}
+
 }  // namespace
 
 QString toClashWriteMode(const QString &targetMode) {
@@ -259,6 +263,121 @@ void ClashApiClient::switchMode(const config::ClashApiConfig &apiConfig, const Q
 
         reply->deleteLater();
         emit modeSwitchFinished(result);
+    });
+}
+
+void ClashApiClient::fetchProxySelector(const config::ClashApiConfig &apiConfig, const QString &selectorName) {
+    QUrl url = buildUrl(apiConfig, "/");
+    url.setPath(proxySelectorPath(selectorName), QUrl::TolerantMode);
+    QNetworkRequest request(url);
+    auto *reply = m_network.get(request);
+    attachTimeout(reply);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, selectorName]() {
+        ProxySelectorStateResult result;
+        result.selectorName = selectorName;
+        result.httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
+        const QString networkError = describeNetworkReply(reply);
+        if (!networkError.isEmpty()) {
+            result.detail = networkError;
+            reply->deleteLater();
+            emit proxySelectorStateFinished(result);
+            return;
+        }
+
+        if (!isSuccessfulHttpStatus(result.httpStatus)) {
+            const QString body = readReplyBody(reply);
+            result.detail = body.isEmpty()
+                ? QString("failed to load proxy selector '%1': HTTP %2").arg(selectorName).arg(result.httpStatus)
+                : QString("failed to load proxy selector '%1': HTTP %2: %3")
+                      .arg(selectorName)
+                      .arg(result.httpStatus)
+                      .arg(body);
+            reply->deleteLater();
+            emit proxySelectorStateFinished(result);
+            return;
+        }
+
+        QJsonParseError parseError;
+        const QJsonDocument json = QJsonDocument::fromJson(reply->readAll(), &parseError);
+        if (parseError.error != QJsonParseError::NoError || !json.isObject()) {
+            result.detail = QString("invalid proxy selector JSON: %1").arg(parseError.errorString());
+            reply->deleteLater();
+            emit proxySelectorStateFinished(result);
+            return;
+        }
+
+        const QJsonObject object = json.object();
+        result.currentProxy = object.value("now").toString().trimmed();
+        const QJsonValue allValue = object.value("all");
+        if (!allValue.isArray()) {
+            result.detail = "proxy selector response did not include an 'all' array";
+            reply->deleteLater();
+            emit proxySelectorStateFinished(result);
+            return;
+        }
+
+        for (const auto &item : allValue.toArray()) {
+            const QString proxyName = item.toString().trimmed();
+            if (!proxyName.isEmpty() && !result.availableProxies.contains(proxyName)) {
+                result.availableProxies.push_back(proxyName);
+            }
+        }
+
+        if (result.currentProxy.isEmpty()) {
+            result.detail = "proxy selector response did not include current proxy";
+        } else if (result.availableProxies.isEmpty()) {
+            result.detail = "proxy selector response did not include any available proxies";
+        } else {
+            result.ok = true;
+            result.detail = "proxy selector state loaded";
+        }
+
+        reply->deleteLater();
+        emit proxySelectorStateFinished(result);
+    });
+}
+
+void ClashApiClient::switchProxy(const config::ClashApiConfig &apiConfig,
+                                 const QString &selectorName,
+                                 const QString &targetProxy) {
+    QUrl url = buildUrl(apiConfig, "/");
+    url.setPath(proxySelectorPath(selectorName), QUrl::TolerantMode);
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    request.setRawHeader("Accept", "application/json");
+
+    QJsonObject payload;
+    payload.insert("name", targetProxy);
+
+    auto *reply = m_network.put(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    attachTimeout(reply);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, selectorName, targetProxy]() {
+        ProxySwitchResult result;
+        result.selectorName = selectorName;
+        result.targetProxy = targetProxy;
+        result.httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
+        const QString networkError = describeNetworkReply(reply);
+        if (!networkError.isEmpty()) {
+            result.detail = networkError;
+        } else if (!isSuccessfulHttpStatus(result.httpStatus)) {
+            const QString body = readReplyBody(reply);
+            result.detail = body.isEmpty()
+                ? QString("failed to switch proxy selector '%1': HTTP %2").arg(selectorName).arg(result.httpStatus)
+                : QString("failed to switch proxy selector '%1': HTTP %2: %3")
+                      .arg(selectorName)
+                      .arg(result.httpStatus)
+                      .arg(body);
+        } else {
+            result.ok = true;
+            result.detail = QString("requested proxy '%1' for selector '%2'").arg(targetProxy, selectorName);
+        }
+
+        reply->deleteLater();
+        emit proxySwitchFinished(result);
     });
 }
 

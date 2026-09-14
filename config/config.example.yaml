@@ -5,6 +5,9 @@ clashApi:
   port: 21090
   modeSyncIntervalMs: 0 # background Clash mode resync cadence; 0 disables automatic sync
   disableDefaultProfiles: false
+  displayAllModes: true # append backend modes reported by /configs after configured profiles
+  editProxySelector: true # expose the configured outbound selector on the Main page
+  proxySelector: "proxy"
   profiles:
     - name: "work"
       mode: "work"
@@ -97,6 +100,7 @@ ui:
       pageRules: "2"
       pageSettings: "3"
       openModeSelector: "M"
+      openProxySelector: "N"
       openRuleFileSelector: "R"
       refreshRuntime: "Ctrl+R"
       refreshLocationData: "Shift+F5"

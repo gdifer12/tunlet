@@ -88,7 +88,7 @@ private:
         ConfigApply,
         PeriodicTimer,
         StartupBootstrap,
-        ModeChangeBootstrap,
+        ConnectionChangeBootstrap,
     };
 
     enum class RuntimeProbeKind {
@@ -137,6 +137,7 @@ private:
     QTimer m_timer;
     DiagnosticsSnapshot m_snapshot;
     QString m_lastObservedModeValue;
+    QString m_lastObservedProxyValue;
     quint64 m_probeGeneration = 0;
     RuntimeRefreshProgress m_runtimeRefreshProgress;
     QPointer<QProcess> m_ipv4Process;

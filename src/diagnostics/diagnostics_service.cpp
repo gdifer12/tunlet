@@ -185,8 +185,8 @@ QString DiagnosticsService::refreshOriginName(RefreshOrigin origin) const {
         return "periodic_timer";
     case RefreshOrigin::StartupBootstrap:
         return "startup";
-    case RefreshOrigin::ModeChangeBootstrap:
-        return "mode_change";
+    case RefreshOrigin::ConnectionChangeBootstrap:
+        return "connection_change";
     case RefreshOrigin::RuntimeReread:
     default:
         return "manual_ui";
@@ -323,6 +323,7 @@ void DiagnosticsService::refreshLocationDataNow() {
 void DiagnosticsService::updateConfig(const config::AppConfig &config) {
     m_config = config;
     m_lastObservedModeValue.clear();
+    m_lastObservedProxyValue.clear();
     rebuildGeoIpProvider();
     updateConfigurationSnapshot();
 
@@ -344,21 +345,35 @@ DiagnosticsSnapshot DiagnosticsService::snapshot() const {
 }
 
 void DiagnosticsService::observeModeStatus(const tunlet::clash::ModeStatus &status) {
-    if (status.busy || status.currentModeValue.isEmpty()) {
+    if (status.busy || status.proxySelector.busy) {
         return;
     }
 
-    if (m_lastObservedModeValue.isEmpty()) {
-        m_lastObservedModeValue = status.currentModeValue;
-        return;
+    bool connectionChanged = false;
+    if (!status.currentModeValue.isEmpty()) {
+        if (m_lastObservedModeValue.isEmpty()) {
+            m_lastObservedModeValue = status.currentModeValue;
+        } else if (QString::compare(m_lastObservedModeValue, status.currentModeValue, Qt::CaseInsensitive) != 0) {
+            m_lastObservedModeValue = status.currentModeValue;
+            connectionChanged = true;
+        }
     }
 
-    if (QString::compare(m_lastObservedModeValue, status.currentModeValue, Qt::CaseInsensitive) == 0) {
-        return;
+    const auto &proxy = status.proxySelector;
+    if (!proxy.enabled) {
+        m_lastObservedProxyValue.clear();
+    } else if (proxy.reachable && !proxy.currentProxy.isEmpty()) {
+        if (m_lastObservedProxyValue.isEmpty()) {
+            m_lastObservedProxyValue = proxy.currentProxy;
+        } else if (m_lastObservedProxyValue != proxy.currentProxy) {
+            m_lastObservedProxyValue = proxy.currentProxy;
+            connectionChanged = true;
+        }
     }
 
-    m_lastObservedModeValue = status.currentModeValue;
-    refreshNow(RefreshOrigin::ModeChangeBootstrap);
+    if (connectionChanged) {
+        refreshNow(RefreshOrigin::ConnectionChangeBootstrap);
+    }
 }
 
 void DiagnosticsService::handleHealthResult(const clash::HealthCheckResult &result) {
@@ -919,7 +934,7 @@ void DiagnosticsService::readLocationFromPublicIp(RefreshOrigin origin) {
     const QString publicIp = m_snapshot.publicIp;
     const bool shouldBootstrapDynamicCacheMiss =
         m_config.diagnostics.connection.location.mode == config::DiagnosticsLocationMode::DynamicCache &&
-        (origin == RefreshOrigin::StartupBootstrap || origin == RefreshOrigin::ModeChangeBootstrap);
+        (origin == RefreshOrigin::StartupBootstrap || origin == RefreshOrigin::ConnectionChangeBootstrap);
     const auto callback = [this, publicIp](const GeoIpResolveResult &asyncResult) {
         if (publicIp != m_snapshot.publicIp) {
             return;

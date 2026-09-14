@@ -2,12 +2,28 @@
 
 #include "logging/logging_service.hpp"
 
+#include <QSet>
+
 namespace tunlet::clash {
 
 namespace {
 
 QString buildEndpointLabel(const config::ClashApiConfig &apiConfig) {
     return QString("%1:%2").arg(apiConfig.host).arg(apiConfig.port);
+}
+
+QString normalizedValue(const QString &value) {
+    return value.trimmed().toCaseFolded();
+}
+
+bool containsMode(const QStringList &modes, const QString &mode) {
+    const QString normalizedMode = normalizedValue(mode);
+    for (const auto &candidate : modes) {
+        if (normalizedValue(candidate) == normalizedMode) {
+            return true;
+        }
+    }
+    return false;
 }
 
 }  // namespace
@@ -20,10 +36,18 @@ ModeController::ModeController(const config::AppConfig &config,
     connect(m_client, &ClashApiClient::healthCheckFinished, this, &ModeController::handleHealthResult);
     connect(m_client, &ClashApiClient::modeStateFinished, this, &ModeController::handleModeState);
     connect(m_client, &ClashApiClient::modeSwitchFinished, this, &ModeController::handleModeSwitch);
+    connect(m_client,
+            &ClashApiClient::proxySelectorStateFinished,
+            this,
+            &ModeController::handleProxySelectorState);
+    connect(m_client, &ClashApiClient::proxySwitchFinished, this, &ModeController::handleProxySwitch);
     connect(&m_modeSyncTimer, &QTimer::timeout, this, &ModeController::pollModeStatus);
 
     m_status.detail = "Not refreshed yet";
     m_status.endpointLabel = buildEndpointLabel(m_config.clashApi);
+    m_status.proxySelector.enabled = m_config.clashApi.editProxySelector;
+    m_status.proxySelector.selectorName = m_config.clashApi.proxySelector;
+    m_status.proxySelector.detail = m_status.proxySelector.enabled ? "Not refreshed yet" : "Proxy selector disabled";
     configureModeSyncTimer();
 }
 
@@ -64,6 +88,10 @@ QString ModeController::refreshOriginName(RefreshOrigin origin) const {
 void ModeController::refreshStatus(RefreshOrigin origin) {
     m_status.busy = true;
     m_status.detail = "Refreshing status...";
+    if (m_status.proxySelector.enabled) {
+        m_status.proxySelector.busy = true;
+        m_status.proxySelector.detail = "Refreshing proxy selector...";
+    }
     emit statusUpdated(m_status);
 
     if (m_logger) {
@@ -75,18 +103,23 @@ void ModeController::refreshStatus(RefreshOrigin origin) {
 
     m_client->checkHealth(m_config.clashApi);
     m_client->fetchCurrentMode(m_config.clashApi);
+    if (m_status.proxySelector.enabled) {
+        m_client->fetchProxySelector(m_config.clashApi, m_status.proxySelector.selectorName);
+    }
 }
 
-void ModeController::switchMode(const QString &profileName) {
-    const auto *profile = findProfile(profileName);
-    if (!profile) {
+void ModeController::switchMode(const QString &optionId) {
+    const auto *profile = findProfile(optionId);
+    if (!profile || m_status.busy || m_status.proxySelector.busy) {
+        const QString detail = !profile ? QString("unknown mode option: %1").arg(optionId)
+                                        : QString("another runtime control operation is already in progress");
         if (m_logger) {
             m_logger->logWarning("mode.switch",
-                                 "Rejected mode switch for unknown profile",
-                                 QString("unknown mode profile: %1").arg(profileName),
-                                 {{"requested_profile", profileName}});
+                                 "Rejected mode switch request",
+                                 detail,
+                                 {{"requested_option", optionId}});
         }
-        emit operationFailed(QString("unknown mode profile: %1").arg(profileName));
+        emit modeOperationFailed(detail);
         return;
     }
 
@@ -107,16 +140,77 @@ void ModeController::switchMode(const QString &profileName) {
     m_client->switchMode(m_config.clashApi, profile->mode);
 }
 
+void ModeController::switchProxy(const QString &proxyName) {
+    auto &proxy = m_status.proxySelector;
+    const QString targetProxy = proxyName.trimmed();
+    if (!proxy.enabled || !proxy.reachable || m_status.busy || proxy.busy || targetProxy.isEmpty() ||
+        !proxy.availableProxies.contains(targetProxy)) {
+        const QString detail = QString("proxy '%1' is not available for selector '%2'")
+                                   .arg(targetProxy, proxy.selectorName);
+        if (m_logger) {
+            m_logger->logWarning("proxy.switch",
+                                 "Rejected proxy switch request",
+                                 detail,
+                                 {{"selector", proxy.selectorName}, {"requested_proxy", targetProxy}});
+        }
+        emit proxyOperationFailed(detail);
+        return;
+    }
+    if (targetProxy == proxy.currentProxy) {
+        return;
+    }
+
+    proxy.busy = true;
+    proxy.switchInFlight = true;
+    proxy.detail = QString("Switching to %1...").arg(targetProxy);
+    m_pendingProxyName = targetProxy;
+    if (m_logger) {
+        m_logger->logInfo("proxy.switch",
+                          "Requested proxy selector switch",
+                          proxy.detail,
+                          {{"selector", proxy.selectorName}, {"requested_proxy", targetProxy}});
+    }
+    emit statusUpdated(m_status);
+    m_client->switchProxy(m_config.clashApi, proxy.selectorName, targetProxy);
+}
+
 void ModeController::updateConfig(const config::AppConfig &config) {
+    const bool endpointChanged = m_config.clashApi.host != config.clashApi.host ||
+                                 m_config.clashApi.port != config.clashApi.port;
+    const bool selectorChanged = endpointChanged ||
+                                 m_config.clashApi.proxySelector != config.clashApi.proxySelector;
     m_config = config;
     m_status.endpointLabel = buildEndpointLabel(m_config.clashApi);
-    configureModeSyncTimer();
-    if (!findProfile(m_pendingProfileName)) {
-        m_pendingProfileName.clear();
-        m_pendingModeValue.clear();
-        m_status.switchInFlight = false;
+    if (endpointChanged) {
+        m_status.currentProfileId.clear();
+        m_status.currentProfileName.clear();
+        m_status.currentModeValue.clear();
+        m_status.supportedModes.clear();
+        m_status.reachable = false;
+        m_status.detail = "Not refreshed yet";
     }
-    emit profilesUpdated(m_config.clashApi.profiles);
+    if (selectorChanged || !m_config.clashApi.editProxySelector) {
+        m_status.proxySelector = {};
+    }
+    m_status.proxySelector.enabled = m_config.clashApi.editProxySelector;
+    m_status.proxySelector.selectorName = m_config.clashApi.proxySelector;
+    if (!m_status.proxySelector.enabled) {
+        m_status.proxySelector.detail = "Proxy selector disabled";
+    }
+    configureModeSyncTimer();
+    m_pendingProfileName.clear();
+    m_pendingModeValue.clear();
+    m_status.switchInFlight = false;
+    m_pendingProxyName.clear();
+    m_status.proxySelector.switchInFlight = false;
+    const bool profilesChanged = rebuildModeOptions();
+    const ModeOption *activeOption = optionForModeValue(m_status.currentModeValue);
+    m_status.currentProfileId = activeOption ? activeOption->id : QString{};
+    m_status.currentProfileName = activeOption ? activeOption->name
+                                               : (m_status.currentModeValue.isEmpty() ? QString{} : QString("unknown"));
+    if (profilesChanged) {
+        emit profilesUpdated(m_modeOptions);
+    }
     emit statusUpdated(m_status);
 }
 
@@ -124,8 +218,8 @@ ModeStatus ModeController::status() const {
     return m_status;
 }
 
-QVector<config::ClashModeProfile> ModeController::profiles() const {
-    return m_config.clashApi.profiles;
+QVector<ModeOption> ModeController::profiles() const {
+    return m_modeOptions;
 }
 
 void ModeController::configureModeSyncTimer() {
@@ -158,7 +252,7 @@ void ModeController::configureModeSyncTimer() {
 }
 
 void ModeController::pollModeStatus() {
-    if (m_status.busy) {
+    if (m_status.busy || m_status.proxySelector.busy) {
         return;
     }
     refreshStatus(RefreshOrigin::BackgroundTimer);
@@ -187,8 +281,12 @@ void ModeController::handleModeState(const ModeStateResult &result) {
     m_status.lastUpdated = QDateTime::currentDateTime();
     if (!result.ok) {
         m_status.detail = result.detail;
+        m_status.currentProfileId.clear();
         m_status.currentProfileName.clear();
         m_status.currentModeValue.clear();
+        const bool switchVerificationFailed = !pendingModeValue.isEmpty();
+        m_pendingProfileName.clear();
+        m_pendingModeValue.clear();
         if (m_logger &&
             (wasReachable || !previousMode.isEmpty() || previousDetail != result.detail)) {
             m_logger->logWarning("mode.sync",
@@ -197,13 +295,22 @@ void ModeController::handleModeState(const ModeStateResult &result) {
                                  {{"endpoint", m_status.endpointLabel}});
         }
         emit statusUpdated(m_status);
+        if (switchVerificationFailed) {
+            emit modeOperationFailed(result.detail);
+        }
         return;
     }
 
     m_status.reachable = true;
     m_status.currentModeValue = result.currentMode;
     m_status.supportedModes = result.supportedModes;
-    m_status.currentProfileName = profileNameForModeValue(result.currentMode);
+    const bool profilesChanged = rebuildModeOptions();
+    const ModeOption *activeOption = optionForModeValue(result.currentMode);
+    m_status.currentProfileId = activeOption ? activeOption->id : QString{};
+    m_status.currentProfileName = activeOption ? activeOption->name : QString("unknown");
+    if (profilesChanged) {
+        emit profilesUpdated(m_modeOptions);
+    }
 
     if (!m_pendingModeValue.isEmpty()) {
         if (QString::compare(result.currentMode, m_pendingModeValue, Qt::CaseInsensitive) == 0) {
@@ -227,7 +334,7 @@ void ModeController::handleModeState(const ModeStateResult &result) {
                                     {"reported_backend_mode", result.currentMode}});
             }
             emit statusUpdated(m_status);
-            emit operationFailed(m_status.detail);
+            emit modeOperationFailed(m_status.detail);
             m_pendingProfileName.clear();
             m_pendingModeValue.clear();
             return;
@@ -267,7 +374,7 @@ void ModeController::handleModeSwitch(const ModeSwitchResult &result) {
                                {{"endpoint", m_status.endpointLabel}});
         }
         emit statusUpdated(m_status);
-        emit operationFailed(result.detail);
+        emit modeOperationFailed(result.detail);
         return;
     }
 
@@ -282,18 +389,176 @@ void ModeController::handleModeSwitch(const ModeSwitchResult &result) {
     refreshStatus(RefreshOrigin::PostSwitchVerify);
 }
 
-QString ModeController::profileNameForModeValue(const QString &modeValue) const {
-    for (const auto &profile : m_config.clashApi.profiles) {
-        if (QString::compare(profile.mode, modeValue, Qt::CaseInsensitive) == 0) {
-            return profile.name;
+void ModeController::handleProxySelectorState(const ProxySelectorStateResult &result) {
+    auto &proxy = m_status.proxySelector;
+    if (!proxy.enabled || result.selectorName != proxy.selectorName) {
+        return;
+    }
+
+    const QString previousProxy = proxy.currentProxy;
+    const QString previousDetail = proxy.detail;
+    const bool wasReachable = proxy.reachable;
+    const QString pendingProxy = m_pendingProxyName;
+
+    proxy.busy = false;
+    proxy.switchInFlight = false;
+    proxy.lastUpdated = QDateTime::currentDateTime();
+    if (!result.ok) {
+        proxy.reachable = false;
+        proxy.stale = !proxy.currentProxy.isEmpty() || !proxy.availableProxies.isEmpty();
+        proxy.detail = result.detail;
+        m_pendingProxyName.clear();
+        if (m_logger && (wasReachable || previousDetail != result.detail)) {
+            m_logger->logWarning("proxy.sync",
+                                 "Failed to refresh proxy selector state",
+                                 result.detail,
+                                 {{"selector", proxy.selectorName}, {"endpoint", m_status.endpointLabel}});
+        }
+        emit statusUpdated(m_status);
+        if (!pendingProxy.isEmpty()) {
+            emit proxyOperationFailed(result.detail);
+        }
+        return;
+    }
+
+    proxy.reachable = true;
+    proxy.stale = false;
+    proxy.currentProxy = result.currentProxy;
+    proxy.availableProxies = result.availableProxies;
+
+    if (!pendingProxy.isEmpty()) {
+        if (result.currentProxy == pendingProxy) {
+            proxy.detail = QString("Current proxy: %1").arg(result.currentProxy);
+            if (m_logger) {
+                m_logger->logInfo("proxy.switch",
+                                  "Proxy selector switch confirmed",
+                                  proxy.detail,
+                                  {{"selector", proxy.selectorName}, {"proxy", result.currentProxy}});
+            }
+        } else {
+            proxy.detail = QString("Proxy switch did not apply: selector reports '%1' instead of '%2'")
+                               .arg(result.currentProxy, pendingProxy);
+            if (m_logger) {
+                m_logger->logError("proxy.switch",
+                                   "Proxy selector switch verification failed",
+                                   proxy.detail,
+                                   {{"selector", proxy.selectorName},
+                                    {"expected_proxy", pendingProxy},
+                                    {"reported_proxy", result.currentProxy}});
+            }
+            m_pendingProxyName.clear();
+            emit statusUpdated(m_status);
+            emit proxyOperationFailed(proxy.detail);
+            return;
+        }
+    } else {
+        proxy.detail = QString("Current proxy: %1").arg(result.currentProxy);
+        if (m_logger && (!wasReachable || previousProxy != result.currentProxy)) {
+            m_logger->logInfo("proxy.sync",
+                              previousProxy != result.currentProxy ? "Observed proxy selector change"
+                                                                   : "Recovered proxy selector synchronization",
+                              proxy.detail,
+                              {{"selector", proxy.selectorName},
+                               {"proxy", result.currentProxy},
+                               {"endpoint", m_status.endpointLabel}});
         }
     }
-    return QString("unknown");
+
+    m_pendingProxyName.clear();
+    emit statusUpdated(m_status);
 }
 
-const config::ClashModeProfile *ModeController::findProfile(const QString &profileName) const {
+void ModeController::handleProxySwitch(const ProxySwitchResult &result) {
+    auto &proxy = m_status.proxySelector;
+    if (!proxy.enabled || result.selectorName != proxy.selectorName) {
+        return;
+    }
+
+    if (!result.ok) {
+        proxy.busy = false;
+        proxy.switchInFlight = false;
+        proxy.detail = result.detail;
+        m_pendingProxyName.clear();
+        if (m_logger) {
+            m_logger->logError("proxy.switch",
+                               "Proxy selector switch request failed",
+                               result.detail,
+                               {{"selector", proxy.selectorName},
+                                {"requested_proxy", result.targetProxy},
+                                {"endpoint", m_status.endpointLabel}});
+        }
+        emit statusUpdated(m_status);
+        emit proxyOperationFailed(result.detail);
+        return;
+    }
+
+    proxy.busy = true;
+    proxy.switchInFlight = true;
+    proxy.detail = result.detail;
+    if (m_logger) {
+        m_logger->logInfo("proxy.switch",
+                          "Proxy selector switch request accepted",
+                          result.detail,
+                          {{"selector", proxy.selectorName}, {"requested_proxy", result.targetProxy}});
+    }
+    emit statusUpdated(m_status);
+    m_client->fetchProxySelector(m_config.clashApi, proxy.selectorName);
+}
+
+bool ModeController::rebuildModeOptions() {
+    QVector<ModeOption> options;
+    QSet<QString> representedModes;
+
     for (const auto &profile : m_config.clashApi.profiles) {
-        if (profile.name == profileName) {
+        if (!containsMode(m_status.supportedModes, profile.mode)) {
+            continue;
+        }
+        options.push_back({QString("configured:%1").arg(profile.name), profile.name, profile.mode, profile.desc});
+        representedModes.insert(normalizedValue(profile.mode));
+    }
+
+    if (m_config.clashApi.displayAllModes) {
+        for (const auto &mode : m_status.supportedModes) {
+            const QString normalizedMode = normalizedValue(mode);
+            if (normalizedMode.isEmpty() || representedModes.contains(normalizedMode)) {
+                continue;
+            }
+            options.push_back({QString("runtime:%1").arg(mode),
+                               mode,
+                               mode,
+                               "Discovered from the Clash API mode-list"});
+            representedModes.insert(normalizedMode);
+        }
+    }
+
+    bool changed = options.size() != m_modeOptions.size();
+    if (!changed) {
+        for (qsizetype index = 0; index < options.size(); ++index) {
+            const auto &next = options.at(index);
+            const auto &current = m_modeOptions.at(index);
+            if (next.id != current.id || next.name != current.name || next.mode != current.mode ||
+                next.desc != current.desc) {
+                changed = true;
+                break;
+            }
+        }
+    }
+    m_modeOptions = options;
+    return changed;
+}
+
+const ModeOption *ModeController::optionForModeValue(const QString &modeValue) const {
+    for (const auto &option : m_modeOptions) {
+        if (QString::compare(option.mode, modeValue, Qt::CaseInsensitive) == 0) {
+            return &option;
+        }
+    }
+    return nullptr;
+}
+
+const ModeOption *ModeController::findProfile(const QString &optionId) const {
+    for (const auto &profile : m_modeOptions) {
+        if (profile.id == optionId) {
             return &profile;
         }
     }

@@ -65,6 +65,7 @@ QImage iconImage(const QIcon &icon) {
 
 tunlet::clash::ModeStatus makeStatus() {
     tunlet::clash::ModeStatus status;
+    status.currentProfileId = "configured:proxy";
     status.currentProfileName = "proxy";
     status.currentModeValue = "global";
     status.reachable = true;
@@ -73,10 +74,10 @@ tunlet::clash::ModeStatus makeStatus() {
     return status;
 }
 
-QVector<tunlet::config::ClashModeProfile> makeProfiles() {
+QVector<tunlet::clash::ModeOption> makeProfiles() {
     return {
-        {.name = "direct", .mode = "direct", .desc = "Direct"},
-        {.name = "proxy", .mode = "global", .desc = "Proxy"},
+        {.id = "configured:direct", .name = "direct", .mode = "direct", .desc = "Direct"},
+        {.id = "configured:proxy", .name = "proxy", .mode = "global", .desc = "Proxy"},
     };
 }
 

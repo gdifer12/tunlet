@@ -113,7 +113,7 @@ TrayController::~TrayController() {
 }
 
 void TrayController::setup(const clash::ModeStatus &status,
-                           const QVector<config::ClashModeProfile> &profiles,
+                           const QVector<clash::ModeOption> &profiles,
                            const diagnostics::DiagnosticsSnapshot &diagnostics,
                            const config::TrayConfig &config) {
     m_status = status;
@@ -146,7 +146,7 @@ void TrayController::updateStatus(const clash::ModeStatus &status) {
     refreshMenuPresentation();
 }
 
-void TrayController::updateProfiles(const QVector<config::ClashModeProfile> &profiles) {
+void TrayController::updateProfiles(const QVector<clash::ModeOption> &profiles) {
     m_profiles = profiles;
     rebuildMenu();
     refreshMenuPresentation();
@@ -260,8 +260,8 @@ void TrayController::rebuildMenu() {
             action->setToolTip(toolTip);
             action->setStatusTip(toolTip);
             m_modeActionGroup->addAction(action);
-            connect(action, &QAction::triggered, this, [this, profileName = profile.name]() { requestModeSwitch(profileName); });
-            m_modeActions.insert(profile.name, action);
+            connect(action, &QAction::triggered, this, [this, optionId = profile.id]() { requestModeSwitch(optionId); });
+            m_modeActions.insert(profile.id, action);
         }
     }
     m_menu->addSeparator();
@@ -299,12 +299,12 @@ void TrayController::refreshMenuPresentation() {
     }
 
     for (const auto &profile : m_profiles) {
-        QAction *action = m_modeActions.value(profile.name);
+        QAction *action = m_modeActions.value(profile.id);
         if (!action) {
             continue;
         }
         const QSignalBlocker blocker(action);
-        action->setChecked(profile.name == m_visibleStatus.currentProfileName);
+        action->setChecked(profile.id == m_visibleStatus.currentProfileId);
     }
 
     updateTrayIcon();
@@ -367,24 +367,24 @@ void TrayController::requestMenuRefresh(MenuRefreshOrigin origin) {
     emit refreshRequested();
 }
 
-void TrayController::requestModeSwitch(const QString &profileName) {
-    if (profileName.trimmed().isEmpty()) {
+void TrayController::requestModeSwitch(const QString &optionId) {
+    if (optionId.trimmed().isEmpty()) {
         return;
     }
-    if (profileName == m_visibleStatus.currentProfileName) {
+    if (optionId == m_visibleStatus.currentProfileId) {
         return;
     }
     if (m_switchRequestPending || m_status.busy || m_status.switchInFlight) {
         logTrayInfo("Skipped tray mode switch request",
                     {},
-                    {{"profile", profileName},
+                    {{"option_id", optionId},
                      {"blocked_by", m_switchRequestPending ? "switch_pending"
                                                            : (m_status.busy ? "mode_busy" : "switch_in_flight")}});
         return;
     }
     m_switchRequestPending = true;
-    logTrayInfo("Requested tray mode switch", {}, {{"profile", profileName}});
-    emit switchRequested(profileName);
+    logTrayInfo("Requested tray mode switch", {}, {{"option_id", optionId}});
+    emit switchRequested(optionId);
 }
 
 void TrayController::showContextMenu() {

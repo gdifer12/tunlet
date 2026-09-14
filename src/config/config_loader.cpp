@@ -299,6 +299,14 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
         throw std::runtime_error("clashApi.modeSyncIntervalMs must be >= 0");
     }
     config.clashApi.disableDefaultProfiles = readBool(clashApi, "disableDefaultProfiles", false);
+    config.clashApi.displayAllModes = readBool(clashApi, "displayAllModes", config.clashApi.displayAllModes);
+    config.clashApi.editProxySelector =
+        readBool(clashApi, "editProxySelector", config.clashApi.editProxySelector);
+    config.clashApi.proxySelector =
+        readString(clashApi, "proxySelector", config.clashApi.proxySelector, "clashApi");
+    if (config.clashApi.editProxySelector && config.clashApi.proxySelector.trimmed().isEmpty()) {
+        throw std::runtime_error("clashApi.proxySelector must not be empty when editProxySelector is enabled");
+    }
     if (!config.clashApi.disableDefaultProfiles) {
         config.clashApi.profiles = defaultProfiles();
     }
@@ -639,6 +647,11 @@ AppConfig parseConfigRoot(const YAML::Node &root, const QString &sourcePath) {
                     shortcuts,
                     "openModeSelector",
                     shortcutConfig.openModeSelector,
+                    "ui.keyboard.shortcuts");
+                shortcutConfig.openProxySelector = readString(
+                    shortcuts,
+                    "openProxySelector",
+                    shortcutConfig.openProxySelector,
                     "ui.keyboard.shortcuts");
                 shortcutConfig.openRuleFileSelector = readString(
                     shortcuts,

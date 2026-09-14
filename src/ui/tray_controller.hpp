@@ -28,13 +28,13 @@ public:
     ~TrayController() override;
 
     void setup(const clash::ModeStatus &status,
-               const QVector<config::ClashModeProfile> &profiles,
+               const QVector<clash::ModeOption> &profiles,
                const diagnostics::DiagnosticsSnapshot &diagnostics,
                const config::TrayConfig &config);
     void show();
     bool isTrayAvailable() const;
     void updateStatus(const clash::ModeStatus &status);
-    void updateProfiles(const QVector<config::ClashModeProfile> &profiles);
+    void updateProfiles(const QVector<clash::ModeOption> &profiles);
     void updateDiagnostics(const diagnostics::DiagnosticsSnapshot &snapshot);
     void updateConfig(const config::TrayConfig &config);
 
@@ -62,7 +62,7 @@ private:
     void updateTrayIcon();
     void updateToolTip();
     void requestMenuRefresh(MenuRefreshOrigin origin);
-    void requestModeSwitch(const QString &profileName);
+    void requestModeSwitch(const QString &optionId);
 
 private slots:
     void handleMenuAboutToShow();
@@ -75,7 +75,7 @@ private:
     QMenu *m_menu = nullptr;
     clash::ModeStatus m_status;
     clash::ModeStatus m_visibleStatus;
-    QVector<config::ClashModeProfile> m_profiles;
+    QVector<clash::ModeOption> m_profiles;
     diagnostics::DiagnosticsSnapshot m_diagnostics;
     diagnostics::DiagnosticsSnapshot m_visibleDiagnostics;
     config::TrayConfig m_config;

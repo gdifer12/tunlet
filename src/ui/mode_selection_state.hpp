@@ -8,29 +8,29 @@
 
 namespace tunlet::ui {
 
-inline bool hasConfiguredProfile(const QVector<config::ClashModeProfile> &profiles, const QString &profileName) {
+inline bool hasConfiguredProfile(const QVector<clash::ModeOption> &profiles, const QString &optionId) {
     for (const auto &profile : profiles) {
-        if (profile.name == profileName) {
+        if (profile.id == optionId) {
             return true;
         }
     }
     return false;
 }
 
-inline QString syncModeProfileSelection(const QVector<config::ClashModeProfile> &profiles,
+inline QString syncModeProfileSelection(const QVector<clash::ModeOption> &profiles,
                                         const clash::ModeStatus &status,
                                         const QString &currentSelection) {
     const bool currentSelectionValid = hasConfiguredProfile(profiles, currentSelection);
-    const bool activeProfileValid = hasConfiguredProfile(profiles, status.currentProfileName);
+    const bool activeProfileValid = hasConfiguredProfile(profiles, status.currentProfileId);
     const bool preservePendingSelection =
         status.busy && currentSelectionValid &&
-        (status.currentProfileName.isEmpty() || currentSelection != status.currentProfileName);
+        (status.currentProfileId.isEmpty() || currentSelection != status.currentProfileId);
 
     if (preservePendingSelection) {
         return currentSelection;
     }
     if (activeProfileValid) {
-        return status.currentProfileName;
+        return status.currentProfileId;
     }
     return {};
 }

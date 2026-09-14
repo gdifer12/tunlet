@@ -224,6 +224,8 @@ QLabel#metricValueCompact[stale="true"],
 QLabel#metricValue[stale="true"],
 QLabel#kvValue[stale="true"],
 QLabel#healthValue[stale="true"],
+QLabel#selectorTriggerValue[stale="true"],
+QLabel#selectorTriggerSub[stale="true"],
 QLabel#healthInlineBadge[stale="true"] {
     color: {{color.text.disabled}};
 }

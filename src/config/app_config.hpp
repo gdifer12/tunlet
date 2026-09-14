@@ -17,6 +17,9 @@ struct ClashApiConfig {
     quint16 port = 0;
     int modeSyncIntervalMs = 0;
     bool disableDefaultProfiles = false;
+    bool displayAllModes = true;
+    bool editProxySelector = true;
+    QString proxySelector = "proxy";
     QVector<ClashModeProfile> profiles;
 };
 
@@ -131,6 +134,7 @@ struct UiKeyboardShortcutsConfig {
     QString pageRules = "2";
     QString pageSettings = "3";
     QString openModeSelector = "M";
+    QString openProxySelector = "N";
     QString openRuleFileSelector = "R";
     QString refreshRuntime = "F5";
     QString refreshLocationData = "Shift+F5";

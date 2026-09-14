@@ -21,6 +21,9 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "  port: 9090\n"
         << "  modeSyncIntervalMs: 15000\n"
         << "  disableDefaultProfiles: false\n"
+        << "  displayAllModes: false\n"
+        << "  editProxySelector: true\n"
+        << "  proxySelector: outbound-picker\n"
         << "  profiles:\n"
         << "    - name: gaming\n"
         << "      mode: gaming\n"
@@ -90,6 +93,7 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
         << "      pageRules: Alt+2\n"
         << "      pageSettings: Alt+3\n"
         << "      openModeSelector: Alt+M\n"
+        << "      openProxySelector: Alt+N\n"
         << "      openRuleFileSelector: Alt+R\n"
         << "      refreshRuntime: F6\n"
         << "      refreshLocationData: Ctrl+F6\n"
@@ -103,6 +107,9 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     REQUIRE(config.clashApi.port == 9090);
     REQUIRE(config.clashApi.modeSyncIntervalMs == 15000);
     REQUIRE(config.clashApi.disableDefaultProfiles == false);
+    REQUIRE(config.clashApi.displayAllModes == false);
+    REQUIRE(config.clashApi.editProxySelector == true);
+    REQUIRE(config.clashApi.proxySelector == "outbound-picker");
     REQUIRE(config.clashApi.profiles.size() == 4);
     REQUIRE(config.clashApi.profiles.at(0).name == "direct");
     REQUIRE(config.clashApi.profiles.at(0).mode == "direct");
@@ -152,6 +159,7 @@ TEST_CASE("ConfigLoader parses valid config", "[config]") {
     REQUIRE(config.ui.keyboard.shortcuts.pageRules == "Alt+2");
     REQUIRE(config.ui.keyboard.shortcuts.pageSettings == "Alt+3");
     REQUIRE(config.ui.keyboard.shortcuts.openModeSelector == "Alt+M");
+    REQUIRE(config.ui.keyboard.shortcuts.openProxySelector == "Alt+N");
     REQUIRE(config.ui.keyboard.shortcuts.openRuleFileSelector == "Alt+R");
     REQUIRE(config.ui.keyboard.shortcuts.refreshRuntime == "F6");
     REQUIRE(config.ui.keyboard.shortcuts.refreshLocationData == "Ctrl+F6");
@@ -186,6 +194,9 @@ TEST_CASE("ConfigLoader derives default GeoIP paths from config directory", "[co
     const auto config = tunlet::config::ConfigLoader::loadFromPath(configPath);
     REQUIRE(config.configRoute == dir.path());
     REQUIRE(config.clashApi.modeSyncIntervalMs == 0);
+    REQUIRE(config.clashApi.displayAllModes == true);
+    REQUIRE(config.clashApi.editProxySelector == true);
+    REQUIRE(config.clashApi.proxySelector == "proxy");
     REQUIRE(config.ruleSets.forceProxyPath == dir.path() + "/force-proxy.json");
     REQUIRE(config.diagnostics.connection.location.mode == tunlet::config::DiagnosticsLocationMode::LocalDb);
     REQUIRE(config.diagnostics.connection.location.localDb.databasePath == dir.path() + "/GeoLite2-City.mmdb");
@@ -212,6 +223,7 @@ TEST_CASE("ConfigLoader derives default GeoIP paths from config directory", "[co
     REQUIRE(config.ui.keyboard.shortcuts.pageRules == "2");
     REQUIRE(config.ui.keyboard.shortcuts.pageSettings == "3");
     REQUIRE(config.ui.keyboard.shortcuts.openModeSelector == "M");
+    REQUIRE(config.ui.keyboard.shortcuts.openProxySelector == "N");
     REQUIRE(config.ui.keyboard.shortcuts.openRuleFileSelector == "R");
     REQUIRE(config.ui.keyboard.shortcuts.refreshRuntime == "F5");
     REQUIRE(config.ui.keyboard.shortcuts.refreshLocationData == "Shift+F5");
@@ -290,6 +302,22 @@ TEST_CASE("ConfigLoader rejects negative mode sync interval", "[config]") {
         + "  host: 127.0.0.1\n"
         + "  port: 9090\n"
         + "  modeSyncIntervalMs: -1\n"
+        + "ruleSets:\n"
+        + "  forceProxyPath: /tmp/force-proxy.json\n"
+        + "  forceDirectPath: /tmp/force-direct.json\n"
+        + "  autoProxyPath: /tmp/auto-proxy.json\n"
+        + "  autoDirectPath: /tmp/auto-direct.json\n";
+
+    REQUIRE_THROWS(tunlet::config::ConfigLoader::loadFromData(config, "/tmp/tunlet/config.yaml"));
+}
+
+TEST_CASE("ConfigLoader rejects an empty enabled proxy selector", "[config]") {
+    const QString config = QString()
+        + "clashApi:\n"
+        + "  host: 127.0.0.1\n"
+        + "  port: 9090\n"
+        + "  editProxySelector: true\n"
+        + "  proxySelector: ''\n"
         + "ruleSets:\n"
         + "  forceProxyPath: /tmp/force-proxy.json\n"
         + "  forceDirectPath: /tmp/force-direct.json\n"
