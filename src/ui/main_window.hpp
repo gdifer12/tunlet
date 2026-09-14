@@ -99,7 +99,6 @@ private:
     void updateModeSelectionUi();
     void updateProxySelectionUi();
     void updateWindowSizeLabel();
-    void updateSelectorCardHeight();
     void updateRuleLineNumbers();
     void updateRuleEditorErrorHighlight();
     void updateSettingsEditorErrorHighlight();
@@ -171,8 +170,6 @@ private:
     QLabel *m_topRuntimeStatusLabel = nullptr;
 
     QLabel *m_mainPanelStatusLabel = nullptr;
-    QWidget *m_selectorCard = nullptr;
-    QVector<QPointer<QWidget>> m_selectorCardRows;
     QLabel *m_currentProfileLabel = nullptr;
     QLabel *m_modeChipLabel = nullptr;
     QLabel *m_profileDescriptionLabel = nullptr;

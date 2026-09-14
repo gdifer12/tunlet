@@ -667,9 +667,6 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
     updateWindowSizeLabel();
     refreshRecentActionLabel();
     refreshAppConfigPathLabel();
-    QTimer::singleShot(0, this, [this]() {
-        updateSelectorCardHeight();
-    });
 }
 
 void MainWindow::buildUi(bool trayAvailable) {
@@ -972,7 +969,6 @@ QWidget *MainWindow::buildDashboardPage() {
     pageLayout->addWidget(panelHead);
 
     auto *selectorCard = new QWidget(page);
-    m_selectorCard = selectorCard;
     selectorCard->setObjectName("card");
     selectorCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     auto *selectorLayout = new QVBoxLayout(selectorCard);
@@ -1059,6 +1055,8 @@ QWidget *MainWindow::buildDashboardPage() {
     proxyTriggerLayout->addWidget(m_proxyTriggerCaretLabel, 0, Qt::AlignCenter);
     connect(m_proxyTriggerButton, &QPushButton::clicked, this, &MainWindow::openProxyPopup);
     selectorTriggerRow->addWidget(m_proxyTriggerButton, 1);
+    selectorTriggerRowWidget->setMaximumHeight(
+        qMax(m_modeTriggerButton->minimumHeight(), m_proxyTriggerButton->minimumHeight()));
     selectorLayout->addWidget(selectorTriggerRowWidget);
 
     auto *modeSummaryRow = new QWidget(selectorCard);
@@ -1151,17 +1149,7 @@ QWidget *MainWindow::buildDashboardPage() {
     actionRow->addWidget(m_refreshLocationDataButton);
     actionRow->addStretch(1);
     selectorLayout->addWidget(actionRowWidget);
-    m_selectorCardRows = {
-        selectorHead,
-        selectorTriggerRowWidget,
-        modeSummaryRow,
-        bannerRowWidget,
-        actionRowWidget,
-    };
     pageLayout->addWidget(selectorCard);
-    QTimer::singleShot(0, this, [this]() {
-        updateSelectorCardHeight();
-    });
 
     auto *stateCard = new QWidget(page);
     stateCard->setObjectName("card");
@@ -1784,40 +1772,6 @@ void MainWindow::updateWindowSizeLabel() {
         return;
     }
     m_windowSizeLabel->setText(QString("%1 × %2").arg(width()).arg(height()));
-}
-
-void MainWindow::updateSelectorCardHeight() {
-    if (!m_selectorCard || !m_selectorCard->layout() || m_selectorCard->width() <= 0) {
-        return;
-    }
-
-    for (const auto &rowPointer : m_selectorCardRows) {
-        QWidget *row = rowPointer.data();
-        if (!row || !row->layout() || row->width() <= 0) {
-            continue;
-        }
-
-        QLayout *rowLayout = row->layout();
-        const int preferredRowHeight = rowLayout->hasHeightForWidth()
-                                           ? rowLayout->heightForWidth(row->width())
-                                           : rowLayout->sizeHint().height();
-        const int compactRowHeight = qMax(preferredRowHeight, rowLayout->minimumSize().height());
-        if (row->maximumHeight() != compactRowHeight) {
-            row->setMaximumHeight(compactRowHeight);
-            row->updateGeometry();
-        }
-    }
-
-    auto *layout = m_selectorCard->layout();
-    layout->invalidate();
-    const int preferredHeight = layout->hasHeightForWidth()
-                                    ? layout->heightForWidth(m_selectorCard->width())
-                                    : layout->sizeHint().height();
-    const int compactHeight = qMax(preferredHeight, layout->minimumSize().height());
-    if (m_selectorCard->maximumHeight() != compactHeight) {
-        m_selectorCard->setMaximumHeight(compactHeight);
-        m_selectorCard->updateGeometry();
-    }
 }
 
 void MainWindow::updateRuleLineNumbers() {
@@ -2990,9 +2944,6 @@ void MainWindow::updateDashboardCards() {
     updateFooterIpContentWidth();
     updateModeSelectionUi();
     updateProxySelectionUi();
-    QTimer::singleShot(0, this, [this]() {
-        updateSelectorCardHeight();
-    });
 }
 
 void MainWindow::onStatusUpdated(const clash::ModeStatus &status) {
