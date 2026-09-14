@@ -278,6 +278,8 @@ private:
     QLabel *m_recentActionLabel = nullptr;
     QWidget *m_selectorPopup = nullptr;
     QWidget *m_selectorPopupTrigger = nullptr;
+    QVector<QPointer<QAbstractButton>> m_selectorPopupButtons;
+    QPointer<QScrollArea> m_selectorPopupScrollArea;
     QVector<QPointer<QShortcut>> m_shortcuts;
 
     bool m_trayAvailable = false;

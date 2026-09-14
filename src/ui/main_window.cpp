@@ -464,6 +464,7 @@ QWidget *buildSummaryItem(QWidget *parent, const QString &labelText, QLabel **va
     (*detailLabel)->setWordWrap(true);
     (*detailLabel)->setTextFormat(Qt::PlainText);
     layout->addWidget(*detailLabel);
+    layout->addStretch(1);
 
     return item;
 }
@@ -593,8 +594,13 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
         (watched == m_selectorPopup || qobject_cast<QAbstractButton *>(watched) != nullptr) &&
         event->type() == QEvent::KeyPress) {
         auto *keyEvent = static_cast<QKeyEvent *>(event);
-        const auto buttons =
-            m_selectorPopup->findChildren<QAbstractButton *>(QString(), Qt::FindDirectChildrenOnly);
+        QVector<QAbstractButton *> buttons;
+        buttons.reserve(m_selectorPopupButtons.size());
+        for (const auto &button : m_selectorPopupButtons) {
+            if (button) {
+                buttons.push_back(button.data());
+            }
+        }
         if (buttons.isEmpty()) {
             if (keyEvent->key() == Qt::Key_Escape) {
                 closeSelectorPopup();
@@ -613,23 +619,31 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
             currentIndex = 0;
         }
 
+        auto focusButton = [this, &buttons](int index) {
+            auto *button = buttons.at(index);
+            button->setFocus();
+            if (m_selectorPopupScrollArea) {
+                m_selectorPopupScrollArea->ensureWidgetVisible(button);
+            }
+        };
+
         switch (keyEvent->key()) {
         case Qt::Key_Escape:
             closeSelectorPopup();
             return true;
         case Qt::Key_Down:
         case Qt::Key_Right:
-            buttons.at((currentIndex + 1) % buttons.size())->setFocus();
+            focusButton((currentIndex + 1) % buttons.size());
             return true;
         case Qt::Key_Up:
         case Qt::Key_Left:
-            buttons.at((currentIndex - 1 + buttons.size()) % buttons.size())->setFocus();
+            focusButton((currentIndex - 1 + buttons.size()) % buttons.size());
             return true;
         case Qt::Key_Home:
-            buttons.first()->setFocus();
+            focusButton(0);
             return true;
         case Qt::Key_End:
-            buttons.last()->setFocus();
+            focusButton(buttons.size() - 1);
             return true;
         case Qt::Key_Return:
         case Qt::Key_Enter:
@@ -956,6 +970,7 @@ QWidget *MainWindow::buildDashboardPage() {
 
     auto *selectorCard = new QWidget(page);
     selectorCard->setObjectName("card");
+    selectorCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     auto *selectorLayout = new QVBoxLayout(selectorCard);
     selectorLayout->setContentsMargins(18, 14, 18, 14);
     selectorLayout->setSpacing(8);
@@ -1039,6 +1054,7 @@ QWidget *MainWindow::buildDashboardPage() {
     connect(m_proxyTriggerButton, &QPushButton::clicked, this, &MainWindow::openProxyPopup);
     selectorTriggerRow->addWidget(m_proxyTriggerButton, 1);
     selectorLayout->addLayout(selectorTriggerRow);
+    selectorLayout->setAlignment(selectorTriggerRow, Qt::AlignTop);
 
     auto *modeSummaryGrid = new QHBoxLayout();
     modeSummaryGrid->setContentsMargins(0, 0, 0, 0);
@@ -1050,6 +1066,7 @@ QWidget *MainWindow::buildDashboardPage() {
     modeSummaryGrid->addWidget(m_selectedProxySummaryItem, 1);
     modeSummaryGrid->addWidget(buildSummaryItem(selectorCard, "Last reload", &m_lastReloadValue, &m_lastReloadDetail), 1);
     selectorLayout->addLayout(modeSummaryGrid);
+    selectorLayout->setAlignment(modeSummaryGrid, Qt::AlignTop);
 
     auto *bannerRow = new QHBoxLayout();
     bannerRow->setContentsMargins(0, 0, 0, 0);
@@ -1097,6 +1114,7 @@ QWidget *MainWindow::buildDashboardPage() {
     proxyBannerLayout->addWidget(m_proxyBannerStateLabel, 0, Qt::AlignTop);
     bannerRow->addWidget(m_proxyBanner, 1);
     selectorLayout->addLayout(bannerRow);
+    selectorLayout->setAlignment(bannerRow, Qt::AlignTop);
 
     auto *actionRow = new QHBoxLayout();
     actionRow->setSpacing(10);
@@ -1123,6 +1141,7 @@ QWidget *MainWindow::buildDashboardPage() {
     actionRow->addWidget(m_refreshLocationDataButton);
     actionRow->addStretch(1);
     selectorLayout->addLayout(actionRow);
+    selectorLayout->setAlignment(actionRow, Qt::AlignTop);
     pageLayout->addWidget(selectorCard);
 
     auto *stateCard = new QWidget(page);
@@ -1845,12 +1864,16 @@ void MainWindow::closeSelectorPopup() {
         auto *popup = m_selectorPopup;
         m_selectorPopup = nullptr;
         m_selectorPopupTrigger = nullptr;
+        m_selectorPopupButtons.clear();
+        m_selectorPopupScrollArea.clear();
         popup->close();
         popup->deleteLater();
         return;
     }
 
     m_selectorPopupTrigger = nullptr;
+    m_selectorPopupButtons.clear();
+    m_selectorPopupScrollArea.clear();
 }
 
 void MainWindow::openModePopup() {
@@ -1877,6 +1900,7 @@ void MainWindow::openModePopup() {
     layout->setSizeConstraint(QLayout::SetMinimumSize);
 
     int activeIndex = 0;
+    QVector<QPointer<QAbstractButton>> buttons;
     for (int index = 0; index < m_modeController->profiles().size(); ++index) {
         const auto &profile = m_modeController->profiles().at(index);
         auto *button = new QPushButton(popup);
@@ -1916,17 +1940,17 @@ void MainWindow::openModePopup() {
         }
 
         layout->addWidget(button);
+        buttons.push_back(button);
     }
 
     m_selectorPopup = popup;
     m_selectorPopupTrigger = m_modeTriggerButton;
+    m_selectorPopupButtons = buttons;
     m_selectorPopupTrigger->setProperty("open", true);
     repolish(m_selectorPopupTrigger);
     popup->show();
     positionSelectorPopup(m_modeTriggerButton);
 
-    const auto buttons =
-        popup->findChildren<QAbstractButton *>(QString(), Qt::FindDirectChildrenOnly);
     if (!buttons.isEmpty()) {
         QTimer::singleShot(0, buttons.at(qBound(0, activeIndex, buttons.size() - 1)), [buttons, activeIndex]() {
             buttons.at(qBound(0, activeIndex, buttons.size() - 1))->setFocus();
@@ -2020,6 +2044,8 @@ void MainWindow::openProxyPopup() {
 
     m_selectorPopup = popup;
     m_selectorPopupTrigger = m_proxyTriggerButton;
+    m_selectorPopupButtons = buttons;
+    m_selectorPopupScrollArea = scrollArea;
     m_selectorPopupTrigger->setProperty("open", true);
     repolish(m_selectorPopupTrigger);
     popup->show();
@@ -2061,6 +2087,7 @@ void MainWindow::openRuleFilePopup() {
     refreshRuleFileStatusCache();
 
     int activeIndex = 0;
+    QVector<QPointer<QAbstractButton>> buttons;
     for (int index = 0; index < m_ruleFiles.size(); ++index) {
         const auto &ruleFile = m_ruleFiles.at(index);
         auto *button = new QPushButton(popup);
@@ -2116,17 +2143,17 @@ void MainWindow::openRuleFilePopup() {
         });
 
         layout->addWidget(button);
+        buttons.push_back(button);
     }
 
     m_selectorPopup = popup;
     m_selectorPopupTrigger = m_ruleFileTriggerButton;
+    m_selectorPopupButtons = buttons;
     m_selectorPopupTrigger->setProperty("open", true);
     repolish(m_selectorPopupTrigger);
     popup->show();
     positionSelectorPopup(m_ruleFileTriggerButton);
 
-    const auto buttons =
-        popup->findChildren<QAbstractButton *>(QString(), Qt::FindDirectChildrenOnly);
     if (!buttons.isEmpty()) {
         QTimer::singleShot(0, buttons.at(qBound(0, activeIndex, buttons.size() - 1)), [buttons, activeIndex]() {
             buttons.at(qBound(0, activeIndex, buttons.size() - 1))->setFocus();
@@ -2621,7 +2648,7 @@ void MainWindow::updateDashboardCards() {
                                              ? "Refreshing connection diagnostics"
                                              : !m_lastDiagnostics.lastRuntimeRefreshFailureDetail.trimmed().isEmpty()
                                                    ? (lastRefresh.isValid()
-                                                          ? QString("Latest refresh failed; showing last successful diagnostics state")
+                                                          ? QString("Latest refresh failed; showing last successful")
                                                           : QString("Latest refresh failed; no successful diagnostics refresh yet"))
                                                    : QString("Last combined diagnostics refresh");
     bool canRefreshLocationData = false;
