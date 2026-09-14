@@ -667,6 +667,9 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
     updateWindowSizeLabel();
     refreshRecentActionLabel();
     refreshAppConfigPathLabel();
+    QTimer::singleShot(0, this, [this]() {
+        updateSelectorCardHeight();
+    });
 }
 
 void MainWindow::buildUi(bool trayAvailable) {
@@ -969,6 +972,7 @@ QWidget *MainWindow::buildDashboardPage() {
     pageLayout->addWidget(panelHead);
 
     auto *selectorCard = new QWidget(page);
+    m_selectorCard = selectorCard;
     selectorCard->setObjectName("card");
     selectorCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     auto *selectorLayout = new QVBoxLayout(selectorCard);
@@ -1148,6 +1152,9 @@ QWidget *MainWindow::buildDashboardPage() {
     actionRow->addStretch(1);
     selectorLayout->addWidget(actionRowWidget);
     pageLayout->addWidget(selectorCard);
+    QTimer::singleShot(0, this, [this]() {
+        updateSelectorCardHeight();
+    });
 
     auto *stateCard = new QWidget(page);
     stateCard->setObjectName("card");
@@ -1770,6 +1777,22 @@ void MainWindow::updateWindowSizeLabel() {
         return;
     }
     m_windowSizeLabel->setText(QString("%1 × %2").arg(width()).arg(height()));
+}
+
+void MainWindow::updateSelectorCardHeight() {
+    if (!m_selectorCard || !m_selectorCard->layout() || m_selectorCard->width() <= 0) {
+        return;
+    }
+
+    auto *layout = m_selectorCard->layout();
+    const int preferredHeight = layout->hasHeightForWidth()
+                                    ? layout->heightForWidth(m_selectorCard->width())
+                                    : layout->sizeHint().height();
+    const int compactHeight = qMax(preferredHeight, layout->minimumSize().height());
+    if (m_selectorCard->maximumHeight() != compactHeight) {
+        m_selectorCard->setMaximumHeight(compactHeight);
+        m_selectorCard->updateGeometry();
+    }
 }
 
 void MainWindow::updateRuleLineNumbers() {
@@ -2942,6 +2965,9 @@ void MainWindow::updateDashboardCards() {
     updateFooterIpContentWidth();
     updateModeSelectionUi();
     updateProxySelectionUi();
+    QTimer::singleShot(0, this, [this]() {
+        updateSelectorCardHeight();
+    });
 }
 
 void MainWindow::onStatusUpdated(const clash::ModeStatus &status) {
