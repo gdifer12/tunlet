@@ -994,7 +994,9 @@ QWidget *MainWindow::buildDashboardPage() {
     selectorHeadLayout->addWidget(selectorNote, 0, Qt::AlignTop);
     selectorLayout->addWidget(selectorHead);
 
-    auto *selectorTriggerRow = new QHBoxLayout();
+    auto *selectorTriggerRowWidget = new QWidget(selectorCard);
+    selectorTriggerRowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    auto *selectorTriggerRow = new QHBoxLayout(selectorTriggerRowWidget);
     selectorTriggerRow->setContentsMargins(0, 0, 0, 0);
     selectorTriggerRow->setSpacing(10);
 
@@ -1053,10 +1055,11 @@ QWidget *MainWindow::buildDashboardPage() {
     proxyTriggerLayout->addWidget(m_proxyTriggerCaretLabel, 0, Qt::AlignCenter);
     connect(m_proxyTriggerButton, &QPushButton::clicked, this, &MainWindow::openProxyPopup);
     selectorTriggerRow->addWidget(m_proxyTriggerButton, 1);
-    selectorLayout->addLayout(selectorTriggerRow);
-    selectorLayout->setAlignment(selectorTriggerRow, Qt::AlignTop);
+    selectorLayout->addWidget(selectorTriggerRowWidget);
 
-    auto *modeSummaryGrid = new QHBoxLayout();
+    auto *modeSummaryRow = new QWidget(selectorCard);
+    modeSummaryRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    auto *modeSummaryGrid = new QHBoxLayout(modeSummaryRow);
     modeSummaryGrid->setContentsMargins(0, 0, 0, 0);
     modeSummaryGrid->setSpacing(10);
     modeSummaryGrid->addWidget(
@@ -1065,10 +1068,11 @@ QWidget *MainWindow::buildDashboardPage() {
     m_selectedProxySummaryItem = buildSummaryItem(selectorCard, "Selected proxy", &m_selectedProxyValue, &m_selectedProxyDetail);
     modeSummaryGrid->addWidget(m_selectedProxySummaryItem, 1);
     modeSummaryGrid->addWidget(buildSummaryItem(selectorCard, "Last reload", &m_lastReloadValue, &m_lastReloadDetail), 1);
-    selectorLayout->addLayout(modeSummaryGrid);
-    selectorLayout->setAlignment(modeSummaryGrid, Qt::AlignTop);
+    selectorLayout->addWidget(modeSummaryRow);
 
-    auto *bannerRow = new QHBoxLayout();
+    auto *bannerRowWidget = new QWidget(selectorCard);
+    bannerRowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    auto *bannerRow = new QHBoxLayout(bannerRowWidget);
     bannerRow->setContentsMargins(0, 0, 0, 0);
     bannerRow->setSpacing(10);
 
@@ -1113,10 +1117,12 @@ QWidget *MainWindow::buildDashboardPage() {
     m_proxyBannerStateLabel->setObjectName("statusPill");
     proxyBannerLayout->addWidget(m_proxyBannerStateLabel, 0, Qt::AlignTop);
     bannerRow->addWidget(m_proxyBanner, 1);
-    selectorLayout->addLayout(bannerRow);
-    selectorLayout->setAlignment(bannerRow, Qt::AlignTop);
+    selectorLayout->addWidget(bannerRowWidget);
 
-    auto *actionRow = new QHBoxLayout();
+    auto *actionRowWidget = new QWidget(selectorCard);
+    actionRowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    auto *actionRow = new QHBoxLayout(actionRowWidget);
+    actionRow->setContentsMargins(0, 0, 0, 0);
     actionRow->setSpacing(10);
     auto *refreshButton = new QPushButton("Reload config", selectorCard);
     refreshButton->setObjectName("ghostButton");
@@ -1140,8 +1146,7 @@ QWidget *MainWindow::buildDashboardPage() {
     actionRow->addWidget(reloadButton);
     actionRow->addWidget(m_refreshLocationDataButton);
     actionRow->addStretch(1);
-    selectorLayout->addLayout(actionRow);
-    selectorLayout->setAlignment(actionRow, Qt::AlignTop);
+    selectorLayout->addWidget(actionRowWidget);
     pageLayout->addWidget(selectorCard);
 
     auto *stateCard = new QWidget(page);
