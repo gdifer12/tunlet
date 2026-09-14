@@ -2,7 +2,7 @@ configRoute: "~/.config"
 
 clashApi:
   host: "127.0.0.1"
-  port: 21090
+  port: 9090
   modeSyncIntervalMs: 0 # background Clash mode resync cadence; 0 disables automatic sync
   disableDefaultProfiles: false
   displayAllModes: true # append backend modes reported by /configs after configured profiles
